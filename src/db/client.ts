@@ -26,3 +26,16 @@ export function createDatabase(connectionString: string) {
 }
 
 export type Database = ReturnType<typeof createDatabase>["db"];
+
+export async function withDatabase<T>(
+  connectionString: string,
+  run: (db: Database) => Promise<T>,
+): Promise<T> {
+  const { db, pool } = createDatabase(connectionString);
+
+  try {
+    return await run(db);
+  } finally {
+    await pool.end();
+  }
+}

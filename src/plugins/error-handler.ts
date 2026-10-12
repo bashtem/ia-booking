@@ -1,6 +1,17 @@
-import type { FastifyError, FastifyPluginAsync } from "fastify";
+import type { FastifyError, FastifyInstance } from "fastify";
+import fp from "fastify-plugin";
 
-export const errorHandlerPlugin: FastifyPluginAsync = async (app) => {
+function clientErrorMessage(error: FastifyError, nodeEnv: string): string {
+  const statusCode = error.statusCode ?? 500;
+
+  if (statusCode >= 500 && nodeEnv === "production") {
+    return "Internal Server Error";
+  }
+
+  return error.message;
+}
+
+async function errorHandlerPlugin(app: FastifyInstance): Promise<void> {
   app.setErrorHandler((error: FastifyError, request, reply) => {
     const statusCode = error.statusCode ?? 500;
 
@@ -8,15 +19,10 @@ export const errorHandlerPlugin: FastifyPluginAsync = async (app) => {
       request.log.error({ err: error }, "request failed");
     }
 
-    const message =
-      statusCode >= 500 && app.config.NODE_ENV === "production"
-        ? "Internal Server Error"
-        : error.message;
-
     return reply.status(statusCode).send({
       statusCode,
       error: error.name,
-      message,
+      message: clientErrorMessage(error, app.config.NODE_ENV),
     });
   });
 
@@ -27,4 +33,8 @@ export const errorHandlerPlugin: FastifyPluginAsync = async (app) => {
       message: `Route ${request.method} ${request.url} not found`,
     });
   });
-};
+}
+
+export const errorHandler = fp(errorHandlerPlugin, {
+  name: "error-handler",
+});

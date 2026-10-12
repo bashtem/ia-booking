@@ -1,14 +1,13 @@
-import { realpathSync } from "node:fs";
-import { pathToFileURL } from "node:url";
 import { sql } from "drizzle-orm";
 import { loadEnv } from "../config/env.ts";
-import { createDatabase } from "./client.ts";
+import { runMain } from "./cli.ts";
+import { withDatabase } from "./client.ts";
 import { seedAdvisors } from "./seed-data.ts";
 import { advisors, availabilityWindows } from "./schema/index.ts";
 
 export async function seedDatabase(connectionString: string) {
-  const { db, pool } = createDatabase(connectionString);
-  const windows = seedAdvisors.flatMap((advisor) =>
+  const advisorRows = seedAdvisors.map(({ id, name }) => ({ id, name }));
+  const windowRows = seedAdvisors.flatMap((advisor) =>
     advisor.availability.map((slot) => ({
       advisorId: advisor.id,
       startsAt: slot.startsAt,
@@ -16,11 +15,11 @@ export async function seedDatabase(connectionString: string) {
     })),
   );
 
-  try {
-    await db.transaction(async (tx) => {
+  await withDatabase(connectionString, (db) =>
+    db.transaction(async (tx) => {
       await tx
         .insert(advisors)
-        .values(seedAdvisors.map(({ id, name }) => ({ id, name })))
+        .values(advisorRows)
         .onConflictDoUpdate({
           target: advisors.id,
           set: { name: sql<string>`excluded.name` },
@@ -28,31 +27,20 @@ export async function seedDatabase(connectionString: string) {
 
       await tx
         .insert(availabilityWindows)
-        .values(windows)
+        .values(windowRows)
         .onConflictDoNothing({
           target: [availabilityWindows.advisorId, availabilityWindows.startsAt],
         });
-    });
-  } finally {
-    await pool.end();
-  }
+    }),
+  );
 
   return {
-    advisors: seedAdvisors.length,
-    availabilityWindows: windows.length,
+    advisors: advisorRows.length,
+    availabilityWindows: windowRows.length,
   };
 }
 
-function isDirectRun() {
-  const entry = process.argv[1];
-  if (entry === undefined) {
-    return false;
-  }
-
-  return import.meta.url === pathToFileURL(realpathSync(entry)).href;
-}
-
-async function runCli() {
+runMain(import.meta.url, async () => {
   const env = loadEnv();
 
   if (env.NODE_ENV === "production") {
@@ -65,11 +53,4 @@ async function runCli() {
   console.log(
     `Seeded ${seeded.advisors} advisors and ${seeded.availabilityWindows} availability windows.`,
   );
-}
-
-if (isDirectRun()) {
-  runCli().catch((error: unknown) => {
-    console.error(error);
-    process.exitCode = 1;
-  });
-}
+});

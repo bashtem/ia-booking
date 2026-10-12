@@ -4,19 +4,24 @@ import { z } from "zod";
 
 const developmentDatabaseUrl = "postgres://ia:ia@localhost:5432/ia_booking";
 
-const postgresUrl = z.string().refine((value) => {
+function isPostgresUrl(value: string): boolean {
   try {
     const url = new URL(value);
-    const database = url.pathname.replace(/^\//, "");
+    const databaseName = url.pathname.replace(/^\//, "");
+    const isPostgresProtocol =
+      url.protocol === "postgres:" || url.protocol === "postgresql:";
+
     return (
-      (url.protocol === "postgres:" || url.protocol === "postgresql:") &&
-      url.hostname.length > 0 &&
-      database.length > 0
+      isPostgresProtocol && url.hostname.length > 0 && databaseName.length > 0
     );
   } catch {
     return false;
   }
-}, "must be a postgres connection URL");
+}
+
+const postgresUrl = z
+  .string()
+  .refine(isPostgresUrl, "must be a postgres connection URL");
 
 const envSchema = z
   .object({
@@ -68,6 +73,12 @@ export function loadEnvFileIfPresent(): void {
   }
 }
 
+function formatEnvIssues(issues: z.core.$ZodIssue[]): string {
+  return issues
+    .map((issue) => `${issue.path.join(".") || "env"}: ${issue.message}`)
+    .join("; ");
+}
+
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   if (source === process.env) {
     loadEnvFileIfPresent();
@@ -76,10 +87,9 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const parsed = envSchema.safeParse(source);
 
   if (!parsed.success) {
-    const details = parsed.error.issues
-      .map((issue) => `${issue.path.join(".") || "env"}: ${issue.message}`)
-      .join("; ");
-    throw new Error(`Invalid environment configuration: ${details}`);
+    throw new Error(
+      `Invalid environment configuration: ${formatEnvIssues(parsed.error.issues)}`,
+    );
   }
 
   return parsed.data;

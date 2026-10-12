@@ -8,25 +8,27 @@ export interface BuildAppOptions {
   env?: Env;
 }
 
+function loggerOptions(env: Env): FastifyServerOptions["logger"] {
+  if (env.NODE_ENV !== "development") {
+    return { level: env.LOG_LEVEL };
+  }
+
+  return {
+    level: env.LOG_LEVEL,
+    transport: {
+      target: "pino-pretty",
+      options: {
+        translateTime: "HH:MM:ss Z",
+        ignore: "pid,hostname",
+      },
+    },
+  };
+}
+
 export async function buildApp(options: BuildAppOptions = {}) {
   const env = options.env ?? loadEnv();
-
-  const logger: FastifyServerOptions["logger"] =
-    env.NODE_ENV === "development"
-      ? {
-          level: env.LOG_LEVEL,
-          transport: {
-            target: "pino-pretty",
-            options: {
-              translateTime: "HH:MM:ss Z",
-              ignore: "pid,hostname",
-            },
-          },
-        }
-      : { level: env.LOG_LEVEL };
-
   const app = Fastify({
-    logger,
+    logger: loggerOptions(env),
     logController: new LogController({
       disableRequestLogging: env.NODE_ENV === "test",
     }),

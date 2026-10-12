@@ -16,11 +16,12 @@ src/
   server.ts                         process entry: listen and graceful shutdown
   app.ts                            buildApp() factory
   config/env.ts                     validated environment
-  db/client.ts                      pool and Drizzle client from DATABASE_URL
+  db/client.ts                      pool, Drizzle client, and withDatabase()
+  db/cli.ts                         direct-run guard shared by migrate and seed
   db/migrate.ts                     applies drizzle/
   db/seed.ts                        loads fixture advisors and windows
   db/seed-data.ts                   November 2026 advisor availability
-  db/schema/                        one module per table, re-exported from index.ts
+  db/schema/                        one module per table, shared timestamps, re-exported from index.ts
   plugins/database.ts               decorates app.db and closes the pool on shutdown
   plugins/                          other Fastify plugins
   routes/                           HTTP route modules

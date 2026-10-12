@@ -1,4 +1,4 @@
-import { sql, type SQL } from "drizzle-orm";
+import { sql, type AnyColumn, type SQL } from "drizzle-orm";
 import {
   check,
   index,
@@ -8,6 +8,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { advisors } from "./advisors.ts";
+import { timestamps } from "./timestamps.ts";
 
 export const visaTypes = {
   A: { label: "Skilled Worker", durationMinutes: 30 },
@@ -25,11 +26,33 @@ export const bookingStatuses = [
 
 export type BookingStatus = (typeof bookingStatuses)[number];
 
-function quotedList(values: readonly string[]): SQL {
+function sqlLiteral(value: string): SQL {
+  return sql.raw(`'${value}'`);
+}
+
+function sqlList(values: readonly string[]): SQL {
   return sql.join(
-    values.map((value) => sql.raw(`'${value}'`)),
+    values.map((value) => sqlLiteral(value)),
     sql`, `,
   );
+}
+
+function statusAllowed(status: AnyColumn): SQL {
+  return sql`${status} in (${sqlList(bookingStatuses)})`;
+}
+
+function durationMatchesVisa(
+  visaType: AnyColumn,
+  startsAt: AnyColumn,
+  endsAt: AnyColumn,
+): SQL {
+  const matches = (Object.keys(visaTypes) as VisaType[]).map((code) => {
+    const minutes = String(visaTypes[code].durationMinutes);
+
+    return sql`(${visaType} = ${sqlLiteral(code)} and ${endsAt} = ${startsAt} + interval '${sql.raw(`${minutes} minutes`)}')`;
+  });
+
+  return sql.join(matches, sql` or `);
 }
 
 export const bookings = pgTable(
@@ -45,32 +68,13 @@ export const bookings = pgTable(
     endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
     status: text("status").$type<BookingStatus>().notNull(),
     heldUntil: timestamp("held_until", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true })
-      .notNull()
-      .defaultNow(),
+    ...timestamps(),
   },
   (table) => [
-    check(
-      "bookings_status",
-      sql`${table.status} in (${quotedList(bookingStatuses)})`,
-    ),
+    check("bookings_status", statusAllowed(table.status)),
     check(
       "bookings_duration",
-      sql.join(
-        (
-          Object.entries(visaTypes) as [
-            VisaType,
-            (typeof visaTypes)[VisaType],
-          ][]
-        ).map(
-          ([code, spec]) =>
-            sql`(${table.visaType} = ${sql.raw(`'${code}'`)} and ${table.endsAt} = ${table.startsAt} + interval '${sql.raw(String(spec.durationMinutes))} minutes')`,
-        ),
-        sql` or `,
-      ),
+      durationMatchesVisa(table.visaType, table.startsAt, table.endsAt),
     ),
     check(
       "bookings_candidate_name_not_blank",

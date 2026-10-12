@@ -8,12 +8,15 @@ export const advisorsRelations = relations(advisors, ({ many }) => ({
   bookings: many(bookings),
 }));
 
-export const availabilityWindowsRelations = relations(availabilityWindows, ({ one }) => ({
-  advisor: one(advisors, {
-    fields: [availabilityWindows.advisorId],
-    references: [advisors.id],
+export const availabilityWindowsRelations = relations(
+  availabilityWindows,
+  ({ one }) => ({
+    advisor: one(advisors, {
+      fields: [availabilityWindows.advisorId],
+      references: [advisors.id],
+    }),
   }),
-}));
+);
 
 export const bookingsRelations = relations(bookings, ({ one }) => ({
   advisor: one(advisors, {

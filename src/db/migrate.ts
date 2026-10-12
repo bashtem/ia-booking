@@ -1,32 +1,22 @@
-import { realpathSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import { loadEnv } from "../config/env.ts";
-import { createDatabase } from "./client.ts";
+import { runMain } from "./cli.ts";
+import { withDatabase } from "./client.ts";
 
-const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), "../../drizzle");
+const migrationsFolder = join(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../drizzle",
+);
 
-export async function applyMigrations(connectionString: string) {
-  const { db, pool } = createDatabase(connectionString);
-
-  try {
-    await migrate(db, { migrationsFolder });
-  } finally {
-    await pool.end();
-  }
+export async function applyMigrations(connectionString: string): Promise<void> {
+  await withDatabase(connectionString, (db) =>
+    migrate(db, { migrationsFolder }),
+  );
 }
 
-function isDirectRun() {
-  const entry = process.argv[1];
-  if (entry === undefined) {
-    return false;
-  }
-
-  return import.meta.url === pathToFileURL(realpathSync(entry)).href;
-}
-
-if (isDirectRun()) {
+runMain(import.meta.url, async () => {
   const env = loadEnv();
   await applyMigrations(env.DATABASE_URL);
-}
+});

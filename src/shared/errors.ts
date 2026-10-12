@@ -1,5 +1,3 @@
-import type { FastifyInstance } from "fastify";
-
 export const bookingErrorCodes = [
   "invalid_request",
   "slot_unavailable",
@@ -35,21 +33,3 @@ export function httpStatusForBookingError(
   }
 }
 
-export function toHttpError(app: FastifyInstance, error: unknown): Error {
-  if (!(error instanceof BookingError)) {
-    return error instanceof Error ? error : new Error("Request failed");
-  }
-
-  const message = error.message;
-  const statusCode = httpStatusForBookingError(error);
-
-  if (statusCode === 400) {
-    return app.httpErrors.badRequest(message);
-  }
-
-  if (statusCode === 404) {
-    return app.httpErrors.notFound(message);
-  }
-
-  return app.httpErrors.conflict(message);
-}

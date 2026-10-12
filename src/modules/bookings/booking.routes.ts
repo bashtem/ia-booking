@@ -1,6 +1,12 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { BookingStatus, VisaType } from "../../db/schema/index.ts";
-import { toHttpError } from "../../shared/errors.ts";
+import { BookingError } from "../../shared/errors.ts";
+import {
+  defaultPage,
+  defaultPageLimit,
+  ok,
+  paginated,
+} from "../../shared/response.ts";
 import { parseInstant } from "../../shared/time.ts";
 import {
   bookingListResponseSchema,
@@ -35,21 +41,20 @@ export const bookingRoutes: FastifyPluginAsync = async (app) => {
       const startsAt = parseInstant(request.body.startsAt);
 
       if (startsAt === undefined) {
-        throw app.httpErrors.badRequest(
+        throw new BookingError(
+          "invalid_request",
           "startsAt must be an ISO-8601 timestamp",
         );
       }
 
-      try {
-        return await createBooking(app.db, {
-          candidateName: request.body.candidateName,
-          visaType: request.body.visaType,
-          advisorId: request.body.advisorId,
-          startsAt,
-        });
-      } catch (error) {
-        throw toHttpError(app, error);
-      }
+      const booking = await createBooking(app.db, {
+        candidateName: request.body.candidateName,
+        visaType: request.body.visaType,
+        advisorId: request.body.advisorId,
+        startsAt,
+      });
+
+      return ok(booking);
     },
   );
 
@@ -61,16 +66,12 @@ export const bookingRoutes: FastifyPluginAsync = async (app) => {
         response: { 200: bookingResponseSchema },
       },
     },
-    async (request) => {
-      try {
-        return await confirmBooking(app.db, request.params.id);
-      } catch (error) {
-        throw toHttpError(app, error);
-      }
-    },
+    async (request) => ok(await confirmBooking(app.db, request.params.id)),
   );
 
-  app.get<{ Querystring: { status?: BookingStatus } }>(
+  app.get<{
+    Querystring: { status?: BookingStatus; page?: number; limit?: number };
+  }>(
     "/bookings",
     {
       schema: {
@@ -79,14 +80,15 @@ export const bookingRoutes: FastifyPluginAsync = async (app) => {
       },
     },
     async (request) => {
-      try {
-        const bookings = await listBookings(app.db, {
-          status: request.query.status,
-        });
-        return { bookings };
-      } catch (error) {
-        throw toHttpError(app, error);
-      }
+      const page = request.query.page ?? defaultPage;
+      const limit = request.query.limit ?? defaultPageLimit;
+      const { bookings, total } = await listBookings(app.db, {
+        status: request.query.status,
+        page,
+        limit,
+      });
+
+      return paginated(bookings, { page, limit, total });
     },
   );
 };

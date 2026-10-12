@@ -76,19 +76,41 @@ export async function findBookingById(
   return row ?? null;
 }
 
-export async function listBookingRows(
+export async function countBookingRows(
   db: Db,
   status?: BookingStatus,
+): Promise<number> {
+  const total = sql<number>`cast(count(*) as int)`;
+  const query = db.select({ total }).from(bookings);
+  const filtered =
+    status === undefined ? query : query.where(eq(bookings.status, status));
+  const [row] = await filtered;
+
+  return row?.total ?? 0;
+}
+
+export async function listBookingRows(
+  db: Db,
+  query: {
+    status?: BookingStatus;
+    limit: number;
+    offset: number;
+  },
 ): Promise<BookingRow[]> {
-  const query = db
+  const selection = db
     .select(bookingColumns)
     .from(bookings)
     .innerJoin(advisors, eq(bookings.advisorId, advisors.id));
 
   const filtered =
-    status === undefined ? query : query.where(eq(bookings.status, status));
+    query.status === undefined
+      ? selection
+      : selection.where(eq(bookings.status, query.status));
 
-  return filtered.orderBy(asc(bookings.startsAt), asc(bookings.id));
+  return filtered
+    .orderBy(asc(bookings.startsAt), asc(bookings.id))
+    .limit(query.limit)
+    .offset(query.offset);
 }
 
 export async function insertHeldBooking(

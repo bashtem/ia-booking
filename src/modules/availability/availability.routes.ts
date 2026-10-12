@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { VisaType } from "../../db/schema/index.ts";
-import { toHttpError } from "../../shared/errors.ts";
+import { ok } from "../../shared/response.ts";
 import {
   availabilityQuerySchema,
   availabilityResponseSchema,
@@ -31,13 +31,7 @@ export const availabilityRoutes: FastifyPluginAsync = async (app) => {
         response: { 200: availabilityResponseSchema },
       },
     },
-    async (request) => {
-      try {
-        const slots = await listBookableSlots(app.db, readQuery(request.query));
-        return { slots };
-      } catch (error) {
-        throw toHttpError(app, error);
-      }
-    },
+    async (request) =>
+      ok(await listBookableSlots(app.db, readQuery(request.query))),
   );
 };

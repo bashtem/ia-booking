@@ -53,9 +53,11 @@ describe("unknown routes", () => {
 
       assert.equal(response.statusCode, 404);
       assert.deepEqual(response.json(), {
-        statusCode: 404,
-        error: "Not Found",
-        message: "Route GET /missing not found",
+        success: false,
+        error: {
+          code: "not_found",
+          message: "Route GET /missing not found",
+        },
       });
     });
   });

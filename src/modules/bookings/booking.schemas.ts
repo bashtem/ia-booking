@@ -1,3 +1,11 @@
+import {
+  defaultPage,
+  defaultPageLimit,
+  maxPageLimit,
+  paginatedSchema,
+  successSchema,
+} from "../../shared/response.ts";
+
 const bookingSchema = {
   type: "object",
   additionalProperties: false,
@@ -63,19 +71,16 @@ export const listBookingsQuerySchema = {
       type: "string",
       enum: ["held", "confirmed", "expired", "cancelled"],
     },
-  },
-} as const;
-
-export const bookingResponseSchema = bookingSchema;
-
-export const bookingListResponseSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["bookings"],
-  properties: {
-    bookings: {
-      type: "array",
-      items: bookingSchema,
+    page: { type: "integer", minimum: 1, default: defaultPage },
+    limit: {
+      type: "integer",
+      minimum: 1,
+      maximum: maxPageLimit,
+      default: defaultPageLimit,
     },
   },
 } as const;
+
+export const bookingResponseSchema = successSchema(bookingSchema);
+
+export const bookingListResponseSchema = paginatedSchema(bookingSchema);

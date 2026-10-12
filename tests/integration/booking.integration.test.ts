@@ -66,22 +66,45 @@ function isBooking(value: unknown): value is Booking {
 }
 
 function readSlots(body: unknown): Slot[] {
-  assert.ok(isRecord(body) && Array.isArray(body.slots));
-  const slots = body.slots.filter(isSlot);
-  assert.equal(slots.length, body.slots.length);
+  if (!isRecord(body) || body.success !== true || !Array.isArray(body.data)) {
+    assert.fail("expected slot list");
+  }
+
+  const slots = body.data.filter(isSlot);
+  assert.equal(slots.length, body.data.length);
   return slots;
 }
 
 function readBooking(body: unknown): Booking {
-  assert.ok(isBooking(body));
-  return body;
+  if (!isRecord(body) || body.success !== true || !isBooking(body.data)) {
+    assert.fail("expected booking");
+  }
+
+  return body.data;
 }
 
 function readBookings(body: unknown): Booking[] {
-  assert.ok(isRecord(body) && Array.isArray(body.bookings));
-  const rows = body.bookings.filter(isBooking);
-  assert.equal(rows.length, body.bookings.length);
+  if (!isRecord(body) || body.success !== true || !Array.isArray(body.data)) {
+    assert.fail("expected booking list");
+  }
+
+  const rows = body.data.filter(isBooking);
+  assert.equal(rows.length, body.data.length);
   return rows;
+}
+
+function readError(body: unknown): { code: string; message: string } {
+  if (
+    !isRecord(body) ||
+    body.success !== false ||
+    !isRecord(body.error) ||
+    typeof body.error.code !== "string" ||
+    typeof body.error.message !== "string"
+  ) {
+    assert.fail("expected error");
+  }
+
+  return { code: body.error.code, message: body.error.message };
 }
 
 function hasSlot(
@@ -132,7 +155,7 @@ describe("booking flow", () => {
         url: "/availability?advisorId=missing&visaType=A",
       });
       assert.equal(filtered.statusCode, 200);
-      assert.deepEqual(filtered.json(), { slots: [] });
+      assert.deepEqual(filtered.json(), { success: true, data: [] });
     });
   });
 
@@ -168,6 +191,7 @@ describe("booking flow", () => {
         startsAt: "2026-11-10T09:00:00.000Z",
       });
       assert.equal(overlap.statusCode, 409);
+      assert.equal(readError(overlap.json()).code, "slot_unavailable");
 
       const otherAdvisor = await book(app, {
         candidateName: "Grace Hopper",
@@ -189,6 +213,7 @@ describe("booking flow", () => {
         startsAt: "2026-11-10T09:07:00.000Z",
       });
       assert.equal(offGrid.statusCode, 409);
+      assert.equal(readError(offGrid.json()).code, "slot_unavailable");
 
       const shortWindow = await book(app, {
         candidateName: "Ada Lovelace",
@@ -197,6 +222,7 @@ describe("booking flow", () => {
         startsAt: "2026-11-11T14:00:00.000Z",
       });
       assert.equal(shortWindow.statusCode, 409);
+      assert.equal(readError(shortWindow.json()).code, "slot_unavailable");
 
       const blank = await book(app, {
         candidateName: "   ",
@@ -205,6 +231,7 @@ describe("booking flow", () => {
         startsAt: "2026-11-10T09:00:00.000Z",
       });
       assert.equal(blank.statusCode, 400);
+      assert.equal(readError(blank.json()).code, "invalid_request");
 
       const missingAdvisor = await book(app, {
         candidateName: "Ada Lovelace",
@@ -213,6 +240,7 @@ describe("booking flow", () => {
         startsAt: "2026-11-10T09:00:00.000Z",
       });
       assert.equal(missingAdvisor.statusCode, 404);
+      assert.equal(readError(missingAdvisor.json()).code, "advisor_not_found");
     });
   });
 
@@ -273,6 +301,7 @@ describe("booking flow", () => {
         url: `/bookings/${booking.id}/confirm`,
       });
       assert.equal(confirm.statusCode, 409);
+      assert.equal(readError(confirm.json()).code, "hold_expired");
 
       const slots = readSlots(
         (
@@ -289,15 +318,34 @@ describe("booking flow", () => {
         url: "/bookings?status=expired",
       });
       assert.equal(listed.statusCode, 200);
-      const rows = readBookings(listed.json());
+      const listedBody: unknown = listed.json();
+      const rows = readBookings(listedBody);
       assert.equal(rows.length, 1);
       assert.equal(rows[0]?.status, "expired");
+      assert.ok(isRecord(listedBody));
+      assert.deepEqual(listedBody.pagination, {
+        page: 1,
+        limit: 20,
+        total: 1,
+        totalPages: 1,
+      });
 
       const held = await app.inject({
         method: "GET",
         url: "/bookings?status=held",
       });
-      assert.deepEqual(held.json(), { bookings: [] });
+      assert.deepEqual(held.json(), {
+        success: true,
+        data: [],
+        pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },
+      });
+
+      const badPage = await app.inject({
+        method: "GET",
+        url: "/bookings?page=0",
+      });
+      assert.equal(badPage.statusCode, 400);
+      assert.equal(readError(badPage.json()).code, "invalid_request");
     });
   });
 });

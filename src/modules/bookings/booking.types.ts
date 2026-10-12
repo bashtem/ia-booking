@@ -9,6 +9,8 @@ export type CreateBookingInput = {
 
 export type ListBookingsQuery = {
   status?: BookingStatus;
+  page: number;
+  limit: number;
 };
 
 export type BookingView = {

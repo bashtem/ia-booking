@@ -6,6 +6,7 @@ import { findAdvisorById } from "../advisors/advisor.repository.ts";
 import { listWindows } from "../availability/availability.repository.ts";
 import {
   confirmOpenHold,
+  countBookingRows,
   expireElapsedHolds,
   findBookingById,
   insertHeldBooking,
@@ -168,10 +169,16 @@ export async function confirmBooking(
 export async function listBookings(
   db: Database,
   query: ListBookingsQuery,
-): Promise<BookingView[]> {
+): Promise<{ bookings: BookingView[]; total: number }> {
   return db.transaction(async (tx) => {
     await expireElapsedHolds(tx);
-    const rows = await listBookingRows(tx, query.status);
-    return rows.map(toView);
+    const total = await countBookingRows(tx, query.status);
+    const rows = await listBookingRows(tx, {
+      status: query.status,
+      limit: query.limit,
+      offset: (query.page - 1) * query.limit,
+    });
+
+    return { bookings: rows.map(toView), total };
   });
 }

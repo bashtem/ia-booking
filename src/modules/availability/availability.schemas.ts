@@ -1,3 +1,5 @@
+import { successSchema } from "../../shared/response.ts";
+
 const slotSchema = {
   type: "object",
   additionalProperties: false,
@@ -20,14 +22,7 @@ export const availabilityQuerySchema = {
   },
 } as const;
 
-export const availabilityResponseSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["slots"],
-  properties: {
-    slots: {
-      type: "array",
-      items: slotSchema,
-    },
-  },
-} as const;
+export const availabilityResponseSchema = successSchema({
+  type: "array",
+  items: slotSchema,
+});

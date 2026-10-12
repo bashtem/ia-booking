@@ -14,7 +14,7 @@
   },
   "overrides": [
     {
-      "files": ["test/**/*.ts"],
+      "files": ["test/**/*.ts", "tests/**/*.ts", "src/**/*.test.ts"],
       "rules": {
         "typescript/no-floating-promises": "off"
       }

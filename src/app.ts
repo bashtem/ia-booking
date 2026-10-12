@@ -2,7 +2,7 @@ import Fastify, { LogController, type FastifyServerOptions } from "fastify";
 import { loadEnv, type Env } from "./config/env.ts";
 import { database } from "./plugins/database.ts";
 import { registerPlugins } from "./plugins/index.ts";
-import { registerRoutes } from "./routes/index.ts";
+import { registerRoutes } from "./routes.ts";
 
 export interface BuildAppOptions {
   env?: Env;

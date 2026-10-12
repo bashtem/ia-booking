@@ -27,6 +27,12 @@ export function createDatabase(connectionString: string) {
 
 export type Database = ReturnType<typeof createDatabase>["db"];
 
+type DatabaseTransaction = Parameters<
+  Parameters<Database["transaction"]>[0]
+>[0];
+
+export type Db = Database | DatabaseTransaction;
+
 export async function withDatabase<T>(
   connectionString: string,
   run: (db: Database) => Promise<T>,

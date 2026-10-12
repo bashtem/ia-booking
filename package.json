@@ -13,7 +13,7 @@
     "build": "tsc -p tsconfig.build.json --noEmit false --rewriteRelativeImportExtensions",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "oxlint",
-    "test": "node --test --test-reporter=spec test/**/*.test.ts",
+    "test": "node --test --test-reporter=spec test/**/*.test.ts src/modules/**/*.test.ts tests/**/*.test.ts",
     "db:up": "docker compose -f infra/dev/compose.yaml up -d --wait",
     "db:down": "docker compose -f infra/dev/compose.yaml down",
     "db:generate": "drizzle-kit generate",

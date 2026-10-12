@@ -19,17 +19,23 @@ src/
   db/client.ts                      pool, Drizzle client, and withDatabase()
   db/cli.ts                         direct-run guard shared by migrate and seed
   db/migrate.ts                     applies drizzle/
-  db/seed.ts                        loads fixture advisors and windows
-  db/seed-data.ts                   November 2026 advisor availability
+  db/seed.ts                        loads data/advisors.json into advisors and windows
   db/schema/                        one module per table, shared timestamps, re-exported from index.ts
+  modules/advisors/                 advisor lookup
+  modules/availability/             bookable slots
+  modules/bookings/                 hold, confirm, and list
+  modules/health/                   health route
+  shared/                           booking errors and slot time rules
   plugins/database.ts               decorates app.db and closes the pool on shutdown
   plugins/                          other Fastify plugins
-  routes/                           HTTP route modules
+  routes.ts                         registers module route plugins
   types/fastify.d.ts                Fastify instance augmentation
-test/                               node:test suites
+data/advisors.json                  November 2026 advisor availability fixture
+test/                               shared node:test helpers and health coverage
+tests/integration/                  booking flow coverage
 ```
 
-Add a feature by creating `src/routes/<feature>.ts` and registering it from `src/routes/index.ts`. When a feature needs schemas or a service, grow that file into `src/routes/<feature>/`. Keep table definitions in `src/db/schema/` and put that feature's queries in its route folder.
+Add a feature as `src/modules/<feature>/` with a route, service, and repository, then register the route plugin from `src/routes.ts`. Keep table definitions in `src/db/schema/`. Put time rules and booking errors in `src/shared/` when more than one module needs them. Repository files are query functions, not classes.
 
 `src/plugins/database.ts` opens the pool while the app builds, decorates `app.db`, and calls `pool.end()` on close. The server entry stays limited to listen and shutdown. Advisor windows and active bookings each have an overlap exclusion constraint in `drizzle/`. A booking must sit inside one of that advisor's windows.
 
@@ -53,7 +59,7 @@ pnpm db:migrate    # apply drizzle/ to DATABASE_URL
 pnpm db:seed       # load fixture advisors and availability windows
 ```
 
-Local setup is `pnpm db:up`, then `pnpm db:migrate`, then `pnpm db:seed`, then `pnpm dev`. `pnpm db:seed` writes the two fixture advisors and their November 2026 availability windows into `DATABASE_URL`. Running it again updates advisor names and leaves a window that already starts at the same time. It does not run when `NODE_ENV` is `production`.
+Local setup is `pnpm db:up`, then `pnpm db:migrate`, then `pnpm db:seed`, then `pnpm dev`. `pnpm db:seed` reads `data/advisors.json` and writes the two fixture advisors and their November 2026 availability windows into `DATABASE_URL`. Running it again updates advisor names and leaves a window that already starts at the same time. It does not run when `NODE_ENV` is `production`.
 
 Copy `.env.example` to `.env` for local overrides. The dev server, production start, migrations, seed, and Drizzle Kit read that file without overriding variables already set in the environment. Defaults are development on port 3000 with CORS disabled until `CORS_ORIGIN` is set.
 

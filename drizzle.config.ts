@@ -1,4 +1,7 @@
 import { defineConfig } from "drizzle-kit";
+import { loadEnvFileIfPresent } from "./src/config/env.ts";
+
+loadEnvFileIfPresent();
 
 const databaseUrl = process.env.DATABASE_URL;
 

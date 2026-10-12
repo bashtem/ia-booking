@@ -18,6 +18,8 @@ src/
   config/env.ts                     validated environment
   db/client.ts                      pool and Drizzle client from DATABASE_URL
   db/migrate.ts                     applies drizzle/
+  db/seed.ts                        loads fixture advisors and windows
+  db/seed-data.ts                   November 2026 advisor availability
   db/schema/                        one module per table, re-exported from index.ts
   plugins/database.ts               decorates app.db and closes the pool on shutdown
   plugins/                          other Fastify plugins
@@ -37,7 +39,7 @@ This repo uses pnpm. `package.json` pins the version through the `packageManager
 ```bash
 corepack enable
 pnpm install
-pnpm dev           # watch mode, loads .env when present
+pnpm dev           # watch mode; reads .env when present
 pnpm test          # API tests via app.inject()
 pnpm typecheck
 pnpm build         # emit dist/ for production
@@ -46,9 +48,12 @@ pnpm db:up         # start the dev Postgres and wait until it accepts connection
 pnpm db:down       # stop the dev Postgres and keep the data volume
 pnpm db:generate --name describe_the_change   # write the next SQL migration
 pnpm db:migrate    # apply drizzle/ to DATABASE_URL
+pnpm db:seed       # load fixture advisors and availability windows
 ```
 
-Copy `.env.example` to `.env` for local overrides. Defaults are development on port 3000 with CORS disabled until `CORS_ORIGIN` is set.
+Local setup is `pnpm db:up`, then `pnpm db:migrate`, then `pnpm db:seed`, then `pnpm dev`. `pnpm db:seed` writes the two fixture advisors and their November 2026 availability windows into `DATABASE_URL`. Running it again updates advisor names and leaves a window that already starts at the same time. It does not run when `NODE_ENV` is `production`.
+
+Copy `.env.example` to `.env` for local overrides. The dev server, production start, migrations, seed, and Drizzle Kit read that file without overriding variables already set in the environment. Defaults are development on port 3000 with CORS disabled until `CORS_ORIGIN` is set.
 
 `pnpm db:up` starts Postgres 17 on `127.0.0.1:5432` with user `ia`, password `ia`, and database `ia_booking`. The first start also creates `ia_booking_test` and enables `btree_gist` in both databases. Connect tests with `postgres://ia:ia@localhost:5432/ia_booking_test`.
 

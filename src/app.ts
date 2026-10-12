@@ -1,5 +1,6 @@
 import Fastify, { LogController, type FastifyServerOptions } from "fastify";
 import { loadEnv, type Env } from "./config/env.ts";
+import { database } from "./plugins/database.ts";
 import { registerPlugins } from "./plugins/index.ts";
 import { registerRoutes } from "./routes/index.ts";
 
@@ -33,10 +34,15 @@ export async function buildApp(options: BuildAppOptions = {}) {
 
   app.decorate("config", env);
 
-  await app.register(registerPlugins);
-  await app.register(registerRoutes);
-
-  await app.ready();
+  try {
+    await app.register(database);
+    await app.register(registerPlugins);
+    await app.register(registerRoutes);
+    await app.ready();
+  } catch (error) {
+    await app.close();
+    throw error;
+  }
 
   return app;
 }

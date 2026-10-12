@@ -15,6 +15,8 @@
     "test": "node --test --test-reporter=spec test/**/*.test.ts",
     "db:up": "docker compose -f infra/dev/compose.yaml up -d --wait",
     "db:down": "docker compose -f infra/dev/compose.yaml down",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "node --env-file-if-exists=.env src/db/migrate.ts",
     "db:up:production": "docker compose -f infra/production/compose.yaml up -d --wait",
     "db:down:production": "docker compose -f infra/production/compose.yaml down"
   },
@@ -23,13 +25,21 @@
     "@fastify/helmet": "^13.1.2",
     "@fastify/sensible": "^6.0.7",
     "close-with-grace": "^2.5.0",
+    "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.5",
+    "fastify-plugin": "^6.0.1",
+    "pg": "^8.23.1",
     "zod": "^4.6.6"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.11",
     "pino-pretty": "^13.2.0",
     "typescript": "^7.0.2"
   },
-  "packageManager": "pnpm@10.30.0+sha512.2b5753de015d480eeb88f5b5b61e0051f05b4301808a82ec8b840c9d2adf7748eb352c83f5c1593ca703ff1017295bc3fdd3119abb9686efc96b9fcb18200937"
+  "packageManager": "pnpm@10.30.0+sha512.2b5753de015d480eeb88f5b5b61e0051f05b4301808a82ec8b840c9d2adf7748eb352c83f5c1593ca703ff1017295bc3fdd3119abb9686efc96b9fcb18200937",
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild"]
+  }
 }

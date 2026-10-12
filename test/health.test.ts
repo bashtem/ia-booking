@@ -9,6 +9,7 @@ const testEnv = {
   PORT: 0,
   LOG_LEVEL: "silent",
   CORS_ORIGIN: "",
+  DATABASE_URL: "postgres://ia:ia@127.0.0.1:5432/ia_booking_test",
 } satisfies Env;
 
 describe("GET /health", () => {

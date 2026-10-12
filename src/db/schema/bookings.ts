@@ -37,6 +37,10 @@ function sqlList(values: readonly string[]): SQL {
   );
 }
 
+function isVisaType(code: string): code is VisaType {
+  return code in visaTypes;
+}
+
 function statusAllowed(status: AnyColumn): SQL {
   return sql`${status} in (${sqlList(bookingStatuses)})`;
 }
@@ -46,7 +50,7 @@ function durationMatchesVisa(
   startsAt: AnyColumn,
   endsAt: AnyColumn,
 ): SQL {
-  const matches = (Object.keys(visaTypes) as VisaType[]).map((code) => {
+  const matches = Object.keys(visaTypes).filter(isVisaType).map((code) => {
     const minutes = String(visaTypes[code].durationMinutes);
 
     return sql`(${visaType} = ${sqlLiteral(code)} and ${endsAt} = ${startsAt} + interval '${sql.raw(`${minutes} minutes`)}')`;

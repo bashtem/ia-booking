@@ -43,6 +43,7 @@ pnpm install
 pnpm dev           # watch mode; reads .env when present
 pnpm test          # API tests via app.inject()
 pnpm typecheck
+pnpm lint          # Oxlint, including TypeScript diagnostics
 pnpm build         # emit dist/ for production
 pnpm start         # run the compiled server
 pnpm db:up         # start the dev Postgres and wait until it accepts connections

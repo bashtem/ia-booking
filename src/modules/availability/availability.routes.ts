@@ -5,10 +5,8 @@ import {
   availabilityQuerySchema,
   availabilityResponseSchema,
 } from "./availability.schemas.ts";
-import {
-  listBookableSlots,
-  type AvailabilityQuery,
-} from "./availability.service.ts";
+import { listBookableSlots } from "./availability.service.ts";
+import type { AvailabilityQuery } from "./availability.types.ts";
 
 function readQuery(query: {
   visaType?: string;

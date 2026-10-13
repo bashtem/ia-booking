@@ -6,8 +6,9 @@ import {
   type BookingStatus,
   type VisaType,
 } from "../../db/schema/index.ts";
-import { holdMinutes } from "../../shared/time.ts";
-import type { BusyRange } from "../../shared/time.ts";
+import type { BusyRange } from "../../shared/slots.ts";
+
+const holdMinutes = 10;
 
 export type BookingRow = {
   id: string;

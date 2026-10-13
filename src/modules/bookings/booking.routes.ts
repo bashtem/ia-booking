@@ -7,7 +7,7 @@ import {
   ok,
   paginated,
 } from "../../shared/response.ts";
-import { parseInstant } from "../../shared/time.ts";
+import { parseInstant } from "../../shared/slots.ts";
 import {
   bookingListResponseSchema,
   bookingParamsSchema,
@@ -43,7 +43,7 @@ export const bookingRoutes: FastifyPluginAsync = async (app) => {
       if (startsAt === undefined) {
         throw new BookingError(
           "invalid_request",
-          "startsAt must be an ISO-8601 timestamp",
+          "startsAt must be an ISO-8601 timestamp e.g. 2026-10-13T10:00:00Z",
         );
       }
 

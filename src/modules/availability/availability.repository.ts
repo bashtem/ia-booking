@@ -1,7 +1,7 @@
 import { asc, eq } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
 import { advisors, availabilityWindows } from "../../db/schema/index.ts";
-import type { SlotWindow } from "../../shared/time.ts";
+import type { SlotWindow } from "../../shared/slots.ts";
 
 export async function listWindows(
   db: Db,

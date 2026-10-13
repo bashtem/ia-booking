@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   deriveBookableSlots,
+  parseInstant,
   type BookableSlot,
   type BusyRange,
   type SlotWindow,
   type VisaDuration,
-} from "../../shared/time.ts";
+} from "../../shared/slots.ts";
 
 const visas: readonly VisaDuration[] = [
   { visaType: "A", durationMinutes: 30 },
@@ -151,5 +152,29 @@ describe("deriveBookableSlots", () => {
     assert.deepEqual(starts(remaining, "ia-002", "A"), [
       "2026-11-10T09:00:00.000Z",
     ]);
+  });
+
+  it("keeps a total order when the same start, advisor, and visa appear twice", () => {
+    const duplicated = deriveBookableSlots([rajanExact, rajanExact], [], visas);
+
+    assert.deepEqual(
+      duplicated.map((slot) => `${slot.advisorId}:${slot.visaType}:${slot.startsAt.toISOString()}`),
+      ["ia-002:A:2026-11-10T09:00:00.000Z", "ia-002:A:2026-11-10T09:00:00.000Z"],
+    );
+  });
+});
+
+describe("parseInstant", () => {
+  it("accepts a timestamp with Z or a numeric offset", () => {
+    assert.equal(parseInstant("2026-11-10T09:00:00Z")?.toISOString(), "2026-11-10T09:00:00.000Z");
+    assert.equal(
+      parseInstant("2026-11-10T10:00:00+01:00")?.toISOString(),
+      "2026-11-10T09:00:00.000Z",
+    );
+  });
+
+  it("rejects a date and a timestamp with no timezone", () => {
+    assert.equal(parseInstant("2026-11-10"), undefined);
+    assert.equal(parseInstant("2026-11-10T09:00:00"), undefined);
   });
 });

@@ -1,16 +1,14 @@
 import type { Database } from "../../db/client.ts";
 import { visaTypes } from "../../db/schema/index.ts";
 import { BookingError } from "../../shared/errors.ts";
-import { deriveBookableSlots } from "../../shared/time.ts";
 import { findAdvisorById } from "../advisors/advisor.repository.ts";
-import { listWindows } from "../availability/availability.repository.ts";
+import { listOfferedSlots } from "../availability/availability.service.ts";
 import {
   confirmOpenHold,
   countBookingRows,
   expireElapsedHolds,
   findBookingById,
   insertHeldBooking,
-  listActiveBookings,
   listBookingRows,
   markHoldExpired,
   type BookingRow,
@@ -80,14 +78,10 @@ export async function createBooking(
       throw new BookingError("advisor_not_found", "Advisor not found");
     }
 
-    const windows = await listWindows(tx, input.advisorId);
-    const busy = await listActiveBookings(tx, input.advisorId);
-    const offered = deriveBookableSlots(windows, busy, [
-      {
-        visaType: input.visaType,
-        durationMinutes: visaTypes[input.visaType].durationMinutes,
-      },
-    ]);
+    const offered = await listOfferedSlots(tx, {
+      advisorId: input.advisorId,
+      visaType: input.visaType,
+    });
     const slot = offered.find(
       (item) => item.startsAt.getTime() === input.startsAt.getTime(),
     );

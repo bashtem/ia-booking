@@ -1,4 +1,3 @@
-export const holdMinutes = 10;
 export const slotStepMinutes = 30;
 
 export type Interval = {
@@ -29,7 +28,7 @@ export function addMinutes(instant: Date, minutes: number): Date {
 }
 
 export function parseInstant(value: string): Date | undefined {
-  if (!value.includes("T")) {
+  if (!value.includes("T") || !/(?:[zZ]|[+-]\d{2}:\d{2})$/.test(value)) {
     return undefined;
   }
 
@@ -94,7 +93,11 @@ export function deriveBookableSlots<Visa extends string>(
       return left.advisorId < right.advisorId ? -1 : 1;
     }
 
-    return left.visaType < right.visaType ? -1 : 1;
+    if (left.visaType !== right.visaType) {
+      return left.visaType < right.visaType ? -1 : 1;
+    }
+
+    return 0;
   });
 
   return slots;

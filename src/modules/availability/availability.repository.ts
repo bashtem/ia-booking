@@ -9,6 +9,7 @@ export async function listWindows(
 ): Promise<SlotWindow[]> {
   const query = db
     .select({
+      id: availabilityWindows.id,
       advisorId: advisors.id,
       advisorName: advisors.name,
       startsAt: availabilityWindows.startsAt,

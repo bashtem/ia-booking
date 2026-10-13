@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { before, describe, it } from "node:test";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { seedDatabase } from "../../src/db/seed.ts";
 import { bookings } from "../../src/db/schema/index.ts";
@@ -16,11 +16,13 @@ type Slot = {
 type Booking = {
   id: string;
   advisorId: string;
+  availabilityWindowId: string;
   visaType: string;
   startsAt: string;
   endsAt: string;
   status: string;
-  heldUntil: string | null;
+  holdExpiresAt: string | null;
+  confirmedAt: string | null;
   candidateName: string;
 };
 
@@ -57,10 +59,12 @@ function isBooking(value: unknown): value is Booking {
     typeof value.id === "string" &&
     typeof value.advisorId === "string" &&
     typeof value.visaType === "string" &&
+    typeof value.availabilityWindowId === "string" &&
     typeof value.startsAt === "string" &&
     typeof value.endsAt === "string" &&
     typeof value.status === "string" &&
-    (typeof value.heldUntil === "string" || value.heldUntil === null) &&
+    (typeof value.holdExpiresAt === "string" || value.holdExpiresAt === null) &&
+    (typeof value.confirmedAt === "string" || value.confirmedAt === null) &&
     typeof value.candidateName === "string"
   );
 }
@@ -172,8 +176,10 @@ describe("booking flow", () => {
       assert.equal(booking.startsAt, "2026-11-10T09:00:00.000Z");
       assert.equal(booking.endsAt, "2026-11-10T09:30:00.000Z");
       assert.equal(booking.status, "held");
-      assert.ok(booking.heldUntil !== null);
-      const remaining = new Date(booking.heldUntil).getTime() - Date.now();
+      assert.equal(booking.confirmedAt, null);
+      assert.ok(booking.availabilityWindowId.length > 0);
+      assert.ok(booking.holdExpiresAt !== null);
+      const remaining = new Date(booking.holdExpiresAt).getTime() - Date.now();
       assert.ok(remaining > 8 * 60_000 && remaining < 12 * 60_000);
 
       const hidden = await app.inject({
@@ -201,6 +207,64 @@ describe("booking flow", () => {
       });
       assert.equal(otherAdvisor.statusCode, 200);
       assert.equal(readBooking(otherAdvisor.json()).endsAt, "2026-11-10T09:30:00.000Z");
+    });
+  });
+
+  it("rebooks an elapsed hold and leaves unrelated lapsed holds in place", async () => {
+    await withApi(async (app) => {
+      const blocked = readBooking(
+        (
+          await book(app, {
+            candidateName: "Ada Lovelace",
+            visaType: "A",
+            advisorId: "ia-001",
+            startsAt: "2026-11-10T09:00:00.000Z",
+          })
+        ).json(),
+      );
+      const later = readBooking(
+        (
+          await book(app, {
+            candidateName: "Grace Hopper",
+            visaType: "A",
+            advisorId: "ia-001",
+            startsAt: "2026-11-10T09:30:00.000Z",
+          })
+        ).json(),
+      );
+      const otherAdvisor = readBooking(
+        (
+          await book(app, {
+            candidateName: "Katherine Johnson",
+            visaType: "A",
+            advisorId: "ia-002",
+            startsAt: "2026-11-10T09:00:00.000Z",
+          })
+        ).json(),
+      );
+
+      await app.db
+        .update(bookings)
+        .set({ holdExpiresAt: new Date(Date.now() - 60_000) })
+        .where(inArray(bookings.id, [blocked.id, later.id, otherAdvisor.id]));
+
+      const replacement = await book(app, {
+        candidateName: "Margaret Hamilton",
+        visaType: "A",
+        advisorId: "ia-001",
+        startsAt: "2026-11-10T09:00:00.000Z",
+      });
+      assert.equal(replacement.statusCode, 200);
+      assert.equal(readBooking(replacement.json()).status, "held");
+
+      const rows = await app.db
+        .select({ id: bookings.id, status: bookings.status })
+        .from(bookings);
+      const statusOf = (id: string) => rows.find((row) => row.id === id)?.status;
+
+      assert.equal(statusOf(blocked.id), "expired");
+      assert.equal(statusOf(later.id), "held");
+      assert.equal(statusOf(otherAdvisor.id), "held");
     });
   });
 
@@ -260,7 +324,9 @@ describe("booking flow", () => {
         url: `/bookings/${booking.id}/confirm`,
       });
       assert.equal(confirmed.statusCode, 200);
-      assert.equal(readBooking(confirmed.json()).status, "confirmed");
+      const confirmedBooking = readBooking(confirmed.json());
+      assert.equal(confirmedBooking.status, "confirmed");
+      assert.equal(typeof confirmedBooking.confirmedAt, "string");
 
       const again = await app.inject({
         method: "POST",
@@ -293,7 +359,7 @@ describe("booking flow", () => {
       const booking = readBooking(created.json());
       await app.db
         .update(bookings)
-        .set({ heldUntil: new Date(Date.now() - 60_000) })
+        .set({ holdExpiresAt: new Date(Date.now() - 60_000) })
         .where(eq(bookings.id, booking.id));
 
       const confirm = await app.inject({
@@ -346,6 +412,67 @@ describe("booking flow", () => {
       });
       assert.equal(badPage.statusCode, 400);
       assert.equal(readError(badPage.json()).code, "invalid_request");
+    });
+  });
+
+  it("returns 404 when the booking id does not exist", async () => {
+    await withApi(async (app) => {
+      const confirm = await app.inject({
+        method: "POST",
+        url: "/bookings/00000000-0000-4000-8000-000000000000/confirm",
+      });
+      assert.equal(confirm.statusCode, 404);
+      assert.equal(readError(confirm.json()).code, "booking_not_found");
+    });
+  });
+
+  it("returns hold_expired for a rebooked elapsed hold and not_held for a cancelled booking", async () => {
+    await withApi(async (app) => {
+      const created = await book(app, {
+        candidateName: "Ada Lovelace",
+        visaType: "A",
+        advisorId: "ia-001",
+        startsAt: "2026-11-10T09:00:00.000Z",
+      });
+      const booking = readBooking(created.json());
+      await app.db
+        .update(bookings)
+        .set({ holdExpiresAt: new Date(Date.now() - 60_000) })
+        .where(eq(bookings.id, booking.id));
+
+      const replacement = await book(app, {
+        candidateName: "Grace Hopper",
+        visaType: "A",
+        advisorId: "ia-001",
+        startsAt: "2026-11-10T09:00:00.000Z",
+      });
+      assert.equal(replacement.statusCode, 200);
+
+      const taken = await app.inject({
+        method: "POST",
+        url: `/bookings/${booking.id}/confirm`,
+      });
+      assert.equal(taken.statusCode, 409);
+      assert.equal(readError(taken.json()).code, "hold_expired");
+
+      const cancelled = await book(app, {
+        candidateName: "Ada Lovelace",
+        visaType: "A",
+        advisorId: "ia-001",
+        startsAt: "2026-11-10T09:30:00.000Z",
+      });
+      const cancelledBooking = readBooking(cancelled.json());
+      await app.db
+        .update(bookings)
+        .set({ status: "cancelled" })
+        .where(eq(bookings.id, cancelledBooking.id));
+
+      const confirmCancelled = await app.inject({
+        method: "POST",
+        url: `/bookings/${cancelledBooking.id}/confirm`,
+      });
+      assert.equal(confirmCancelled.statusCode, 409);
+      assert.equal(readError(confirmCancelled.json()).code, "not_held");
     });
   });
 });

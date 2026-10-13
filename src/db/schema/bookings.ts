@@ -3,28 +3,22 @@ import {
   check,
   index,
   pgTable,
-  text,
   timestamp,
   uuid,
+  varchar,
 } from "drizzle-orm/pg-core";
+import {
+  bookingStatuses,
+  type BookingStatus,
+} from "../../modules/bookings/booking.types.ts";
+import {
+  visaTypeList,
+  visaTypes,
+  type VisaType,
+} from "../../shared/visa-types.ts";
 import { advisors } from "./advisors.ts";
+import { availabilityWindows } from "./availability-windows.ts";
 import { timestamps } from "./timestamps.ts";
-
-export const visaTypes = {
-  A: { label: "Skilled Worker", durationMinutes: 30 },
-  B: { label: "Family / Dependent", durationMinutes: 60 },
-} as const;
-
-export type VisaType = keyof typeof visaTypes;
-
-export const bookingStatuses = [
-  "held",
-  "confirmed",
-  "expired",
-  "cancelled",
-] as const;
-
-export type BookingStatus = (typeof bookingStatuses)[number];
 
 function sqlLiteral(value: string): SQL {
   return sql.raw(`'${value}'`);
@@ -37,8 +31,8 @@ function sqlList(values: readonly string[]): SQL {
   );
 }
 
-function isVisaType(code: string): code is VisaType {
-  return code in visaTypes;
+function visaTypeAllowed(visaType: AnyColumn): SQL {
+  return sql`${visaType} in (${sqlList(visaTypeList)})`;
 }
 
 function statusAllowed(status: AnyColumn): SQL {
@@ -50,7 +44,7 @@ function durationMatchesVisa(
   startsAt: AnyColumn,
   endsAt: AnyColumn,
 ): SQL {
-  const matches = Object.keys(visaTypes).filter(isVisaType).map((code) => {
+  const matches = visaTypeList.map((code) => {
     const minutes = String(visaTypes[code].durationMinutes);
 
     return sql`(${visaType} = ${sqlLiteral(code)} and ${endsAt} = ${startsAt} + interval '${sql.raw(`${minutes} minutes`)}')`;
@@ -63,18 +57,23 @@ export const bookings = pgTable(
   "bookings",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    advisorId: text("advisor_id")
+    advisorId: varchar("advisor_id", { length: 50 })
       .notNull()
       .references(() => advisors.id),
-    candidateName: text("candidate_name").notNull(),
-    visaType: text("visa_type").$type<VisaType>().notNull(),
+    availabilityWindowId: uuid("availability_window_id")
+      .notNull()
+      .references(() => availabilityWindows.id),
+    candidateName: varchar("candidate_name", { length: 150 }).notNull(),
+    visaType: varchar("visa_type", { length: 1 }).$type<VisaType>().notNull(),
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
     endsAt: timestamp("ends_at", { withTimezone: true }).notNull(),
-    status: text("status").$type<BookingStatus>().notNull(),
-    heldUntil: timestamp("held_until", { withTimezone: true }),
+    status: varchar("status", { length: 20 }).$type<BookingStatus>().notNull(),
+    holdExpiresAt: timestamp("hold_expires_at", { withTimezone: true }),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
     ...timestamps(),
   },
   (table) => [
+    check("bookings_visa_type", visaTypeAllowed(table.visaType)),
     check("bookings_status", statusAllowed(table.status)),
     check(
       "bookings_duration",
@@ -86,11 +85,17 @@ export const bookings = pgTable(
     ),
     check(
       "bookings_hold_has_deadline",
-      sql`${table.status} <> 'held' or ${table.heldUntil} is not null`,
+      sql`${table.status} <> 'held' or ${table.holdExpiresAt} is not null`,
+    ),
+    check(
+      "bookings_confirmed_has_timestamp",
+      sql`${table.status} <> 'confirmed' or ${table.confirmedAt} is not null`,
     ),
     index("bookings_advisor_starts_idx").on(table.advisorId, table.startsAt),
+    index("bookings_availability_window_idx").on(table.availabilityWindowId),
+    index("bookings_status_starts_idx").on(table.status, table.startsAt, table.id),
     index("bookings_active_holds_idx")
-      .on(table.heldUntil)
+      .on(table.holdExpiresAt)
       .where(sql`${table.status} = 'held'`),
   ],
 );

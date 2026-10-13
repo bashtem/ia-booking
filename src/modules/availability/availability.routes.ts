@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
-import type { VisaType } from "../../db/schema/index.ts";
 import { ok } from "../../shared/response.ts";
+import { isVisaType, type VisaType } from "../../shared/visa-types.ts";
 import {
   availabilityQuerySchema,
   availabilityResponseSchema,
@@ -13,7 +13,10 @@ function readQuery(query: {
   advisorId?: string;
 }): AvailabilityQuery {
   return {
-    visaType: query.visaType === "A" || query.visaType === "B" ? query.visaType : undefined,
+    visaType:
+      query.visaType !== undefined && isVisaType(query.visaType)
+        ? query.visaType
+        : undefined,
     advisorId: query.advisorId,
   };
 }
@@ -29,7 +32,10 @@ export const availabilityRoutes: FastifyPluginAsync = async (app) => {
         response: { 200: availabilityResponseSchema },
       },
     },
-    async (request) =>
-      ok(await listBookableSlots(app.db, readQuery(request.query))),
+    async (request) => {
+      const slots = await listBookableSlots(app.db, readQuery(request.query));
+
+      return ok(slots);
+    },
   );
 };

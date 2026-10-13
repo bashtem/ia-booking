@@ -1,6 +1,4 @@
 import type { FastifyPluginAsync } from "fastify";
-import type { BookingStatus, VisaType } from "../../db/schema/index.ts";
-import { BookingError } from "../../shared/errors.ts";
 import {
   defaultPage,
   defaultPageLimit,
@@ -8,27 +6,24 @@ import {
   paginated,
 } from "../../shared/response.ts";
 import { parseInstant } from "../../shared/slots.ts";
+import { BookingError } from "./booking.errors.ts";
 import {
   bookingListResponseSchema,
   bookingParamsSchema,
   bookingResponseSchema,
   createBookingBodySchema,
   listBookingsQuerySchema,
+  type CreateBody,
 } from "./booking.schemas.ts";
 import {
   confirmBooking,
   createBooking,
   listBookings,
 } from "./booking.service.ts";
-
-type CreateBody = {
-  candidateName: string;
-  visaType: VisaType;
-  advisorId: string;
-  startsAt: string;
-};
+import type { BookingStatus } from "./booking.types.ts";
 
 export const bookingRoutes: FastifyPluginAsync = async (app) => {
+  // Create a new booking
   app.post<{ Body: CreateBody }>(
     "/bookings",
     {
@@ -58,6 +53,7 @@ export const bookingRoutes: FastifyPluginAsync = async (app) => {
     },
   );
 
+  // Confirm a booking
   app.post<{ Params: { id: string } }>(
     "/bookings/:id/confirm",
     {
@@ -69,6 +65,7 @@ export const bookingRoutes: FastifyPluginAsync = async (app) => {
     async (request) => ok(await confirmBooking(app.db, request.params.id)),
   );
 
+  // List bookings
   app.get<{
     Querystring: { status?: BookingStatus; page?: number; limit?: number };
   }>(

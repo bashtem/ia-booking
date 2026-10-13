@@ -1,4 +1,4 @@
-import type { VisaType } from "../../db/schema/index.ts";
+import type { VisaType } from "../../shared/visa-types.ts";
 
 export type AvailabilityQuery = {
   visaType?: VisaType;

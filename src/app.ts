@@ -1,3 +1,4 @@
+import ajvKeywordsModule from "ajv-keywords";
 import Fastify, { LogController, type FastifyServerOptions } from "fastify";
 import { loadEnv, type Env } from "./config/env.ts";
 import { database } from "./plugins/database.ts";
@@ -32,6 +33,10 @@ export async function buildApp(options: BuildAppOptions = {}) {
     logController: new LogController({
       disableRequestLogging: env.NODE_ENV === "test",
     }),
+    ajv: {
+      // The default import is the module namespace in the type system. `.default` is the plugin function.
+      plugins: [(ajv) => ajvKeywordsModule.default(ajv, "transform")],
+    },
   });
 
   app.decorate("config", env);

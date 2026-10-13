@@ -1,45 +1,51 @@
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, gt, lt, or, sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
-import {
-  advisors,
-  bookings,
-  type BookingStatus,
-  type VisaType,
-} from "../../db/schema/index.ts";
+import { advisors, bookings } from "../../db/schema/index.ts";
 import type { BusyRange } from "../../shared/slots.ts";
+import {
+  BookingStatus,
+  type BookingListRow,
+  type BookingRow,
+  type HeldBookingInput,
+} from "./booking.types.ts";
 
 const holdMinutes = 10;
-
-export type BookingRow = {
-  id: string;
-  advisorId: string;
-  advisorName: string;
-  candidateName: string;
-  visaType: VisaType;
-  startsAt: Date;
-  endsAt: Date;
-  status: BookingStatus;
-  heldUntil: Date | null;
-};
+const holdIsOpen = sql`${bookings.holdExpiresAt} > clock_timestamp()`;
+const holdHasElapsed = sql`${bookings.holdExpiresAt} <= clock_timestamp()`;
 
 const bookingColumns = {
   id: bookings.id,
   advisorId: bookings.advisorId,
   advisorName: advisors.name,
+  availabilityWindowId: bookings.availabilityWindowId,
   candidateName: bookings.candidateName,
   visaType: bookings.visaType,
   startsAt: bookings.startsAt,
   endsAt: bookings.endsAt,
   status: bookings.status,
-  heldUntil: bookings.heldUntil,
+  holdExpiresAt: bookings.holdExpiresAt,
+  confirmedAt: bookings.confirmedAt,
 };
 
-export async function expireElapsedHolds(db: Db): Promise<void> {
+export async function expireOverlappingElapsedHolds(
+  db: Db,
+  range: {
+    advisorId: string;
+    startsAt: Date;
+    endsAt: Date;
+  },
+): Promise<void> {
   await db
     .update(bookings)
-    .set({ status: "expired" })
+    .set({ status: BookingStatus.expired })
     .where(
-      and(eq(bookings.status, "held"), sql`${bookings.heldUntil} <= now()`),
+      and(
+        eq(bookings.advisorId, range.advisorId),
+        eq(bookings.status, BookingStatus.held),
+        holdHasElapsed,
+        lt(bookings.startsAt, range.endsAt),
+        gt(bookings.endsAt, range.startsAt),
+      ),
     );
 }
 
@@ -47,11 +53,10 @@ export async function listActiveBookings(
   db: Db,
   advisorId?: string,
 ): Promise<BusyRange[]> {
-  const conditions = [inArray(bookings.status, ["held", "confirmed"])];
-
-  if (advisorId !== undefined) {
-    conditions.push(eq(bookings.advisorId, advisorId));
-  }
+  const stillReserved = or(
+    eq(bookings.status, BookingStatus.confirmed),
+    and(eq(bookings.status, BookingStatus.held), holdIsOpen),
+  );
 
   return db
     .select({
@@ -60,21 +65,26 @@ export async function listActiveBookings(
       endsAt: bookings.endsAt,
     })
     .from(bookings)
-    .where(and(...conditions));
+    .where(
+      advisorId === undefined
+        ? stillReserved
+        : and(stillReserved, eq(bookings.advisorId, advisorId)),
+    );
 }
 
-export async function findBookingById(
+export async function lockBookingById(
   db: Db,
   id: string,
-): Promise<BookingRow | null> {
+): Promise<BookingListRow | undefined> {
   const [row] = await db
     .select(bookingColumns)
     .from(bookings)
     .innerJoin(advisors, eq(bookings.advisorId, advisors.id))
     .where(eq(bookings.id, id))
-    .limit(1);
+    .limit(1)
+    .for("update", { of: bookings });
 
-  return row ?? null;
+  return row;
 }
 
 export async function countBookingRows(
@@ -97,7 +107,7 @@ export async function listBookingRows(
     limit: number;
     offset: number;
   },
-): Promise<BookingRow[]> {
+): Promise<BookingListRow[]> {
   const selection = db
     .select(bookingColumns)
     .from(bookings)
@@ -116,66 +126,59 @@ export async function listBookingRows(
 
 export async function insertHeldBooking(
   db: Db,
-  input: {
-    advisorId: string;
-    candidateName: string;
-    visaType: VisaType;
-    startsAt: Date;
-    endsAt: Date;
-  },
+  input: HeldBookingInput,
 ): Promise<BookingRow> {
   const [inserted] = await db
     .insert(bookings)
     .values({
       advisorId: input.advisorId,
+      availabilityWindowId: input.availabilityWindowId,
       candidateName: input.candidateName,
       visaType: input.visaType,
       startsAt: input.startsAt,
       endsAt: input.endsAt,
-      status: "held",
-      heldUntil: sql`now() + make_interval(mins => ${holdMinutes})`,
+      status: BookingStatus.held,
+      holdExpiresAt: sql`now() + make_interval(mins => ${holdMinutes})`,
     })
-    .returning({ id: bookings.id });
+    .returning();
 
-  if (inserted === undefined) {
-    throw new Error("Insert did not return a booking id");
-  }
-
-  const row = await findBookingById(db, inserted.id);
-
-  if (row === null) {
-    throw new Error("Inserted booking could not be loaded");
-  }
-
-  return row;
+  return inserted as BookingRow;
 }
 
 export async function confirmOpenHold(
   db: Db,
   id: string,
-): Promise<BookingRow | null> {
+): Promise<BookingRow | undefined> {
   const [updated] = await db
     .update(bookings)
-    .set({ status: "confirmed" })
+    .set({
+      status: BookingStatus.confirmed,
+      confirmedAt: sql`clock_timestamp()`,
+    })
     .where(
       and(
         eq(bookings.id, id),
-        eq(bookings.status, "held"),
-        sql`${bookings.heldUntil} > now()`,
+        eq(bookings.status, BookingStatus.held),
+        holdIsOpen,
+      ),
+    )
+    .returning();
+
+  return updated;
+}
+
+export async function markHoldExpired(db: Db, id: string): Promise<boolean> {
+  const [updated] = await db
+    .update(bookings)
+    .set({ status: BookingStatus.expired })
+    .where(
+      and(
+        eq(bookings.id, id),
+        eq(bookings.status, BookingStatus.held),
+        holdHasElapsed,
       ),
     )
     .returning({ id: bookings.id });
 
-  if (updated === undefined) {
-    return null;
-  }
-
-  return findBookingById(db, updated.id);
-}
-
-export async function markHoldExpired(db: Db, id: string): Promise<void> {
-  await db
-    .update(bookings)
-    .set({ status: "expired" })
-    .where(and(eq(bookings.id, id), eq(bookings.status, "held")));
+  return updated !== undefined;
 }

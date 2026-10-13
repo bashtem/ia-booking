@@ -19,6 +19,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "node --env-file-if-exists=.env src/db/migrate.ts",
     "db:seed": "node --env-file-if-exists=.env src/db/seed.ts",
+    "db:reset": "node --env-file-if-exists=.env src/db/reset.ts",
     "db:up:production": "docker compose -f infra/production/compose.yaml up -d --wait",
     "db:down:production": "docker compose -f infra/production/compose.yaml down"
   },
@@ -26,6 +27,7 @@
     "@fastify/cors": "^11.3.1",
     "@fastify/helmet": "^13.1.2",
     "@fastify/sensible": "^6.0.7",
+    "ajv-keywords": "^5.1.0",
     "close-with-grace": "^2.5.0",
     "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.5",

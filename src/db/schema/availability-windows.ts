@@ -2,10 +2,10 @@ import { sql } from "drizzle-orm";
 import {
   check,
   pgTable,
-  text,
   timestamp,
   unique,
   uuid,
+  varchar,
 } from "drizzle-orm/pg-core";
 import { advisors } from "./advisors.ts";
 import { timestamps } from "./timestamps.ts";
@@ -14,7 +14,7 @@ export const availabilityWindows = pgTable(
   "availability_windows",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    advisorId: text("advisor_id")
+    advisorId: varchar("advisor_id", { length: 50 })
       .notNull()
       .references(() => advisors.id),
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),

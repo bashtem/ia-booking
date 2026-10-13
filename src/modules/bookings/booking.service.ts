@@ -1,59 +1,56 @@
 import type { Database } from "../../db/client.ts";
-import { visaTypes } from "../../db/schema/index.ts";
-import { BookingError } from "../../shared/errors.ts";
+import { visaTypes } from "../../shared/visa-types.ts";
+import { BookingError } from "./booking.errors.ts";
 import { findAdvisorById } from "../advisors/advisor.repository.ts";
 import { listOfferedSlots } from "../availability/availability.service.ts";
 import {
   confirmOpenHold,
   countBookingRows,
-  expireElapsedHolds,
-  findBookingById,
+  expireOverlappingElapsedHolds,
   insertHeldBooking,
   listBookingRows,
+  lockBookingById,
   markHoldExpired,
-  type BookingRow,
 } from "./booking.repository.ts";
-import type {
-  BookingView,
-  CreateBookingInput,
-  ListBookingsQuery,
+import {
+  BookingStatus,
+  type BookingRow,
+  type BookingView,
+  type CreateBookingInput,
+  type ListBookingsQuery,
 } from "./booking.types.ts";
 
 const slotUnavailable = "Slot is no longer available";
 
-function toView(row: BookingRow): BookingView {
+function toView(row: BookingRow, advisorName: string): BookingView {
   return {
     id: row.id,
     advisorId: row.advisorId,
-    advisorName: row.advisorName,
+    advisorName,
+    availabilityWindowId: row.availabilityWindowId,
     candidateName: row.candidateName,
     visaType: row.visaType,
     visaLabel: visaTypes[row.visaType].label,
     startsAt: row.startsAt.toISOString(),
     endsAt: row.endsAt.toISOString(),
     status: row.status,
-    heldUntil: row.heldUntil === null ? null : row.heldUntil.toISOString(),
+    holdExpiresAt:
+      row.holdExpiresAt === null ? null : row.holdExpiresAt.toISOString(),
+    confirmedAt:
+      row.confirmedAt === null ? null : row.confirmedAt.toISOString(),
   };
 }
 
-function postgresCode(error: unknown): string | undefined {
-  if (typeof error !== "object" || error === null) {
-    return undefined;
-  }
-
-  if ("code" in error && typeof error.code === "string") {
-    return error.code;
-  }
-
-  if ("cause" in error) {
-    return postgresCode(error.cause);
-  }
-
-  return undefined;
-}
-
 function isSlotConstraint(error: unknown): boolean {
-  const code = postgresCode(error);
+  const cause = error instanceof Error ? error.cause : undefined;
+  const code =
+    typeof cause === "object" &&
+    cause !== null &&
+    "code" in cause &&
+    typeof cause.code === "string"
+      ? cause.code
+      : undefined;
+
   return code === "23P01" || code === "23514";
 }
 
@@ -61,49 +58,43 @@ export async function createBooking(
   db: Database,
   input: CreateBookingInput,
 ): Promise<BookingView> {
-  const candidateName = input.candidateName.trim();
-
-  if (candidateName.length === 0) {
-    throw new BookingError("invalid_request", "Candidate name is required");
-  }
-
-  await db.transaction(async (tx) => {
-    await expireElapsedHolds(tx);
-  });
-
   return db.transaction(async (tx) => {
     const advisor = await findAdvisorById(tx, input.advisorId);
 
-    if (advisor === null) {
+    if (!advisor)
       throw new BookingError("advisor_not_found", "Advisor not found");
-    }
 
     const offered = await listOfferedSlots(tx, {
       advisorId: input.advisorId,
       visaType: input.visaType,
     });
+
     const slot = offered.find(
       (item) => item.startsAt.getTime() === input.startsAt.getTime(),
     );
 
-    if (slot === undefined) {
-      throw new BookingError("slot_unavailable", slotUnavailable);
-    }
+    if (!slot) throw new BookingError("slot_unavailable", slotUnavailable);
+
+    await expireOverlappingElapsedHolds(tx, {
+      advisorId: input.advisorId,
+      startsAt: slot.startsAt,
+      endsAt: slot.endsAt,
+    });
 
     try {
       const row = await insertHeldBooking(tx, {
         advisorId: input.advisorId,
-        candidateName,
+        availabilityWindowId: slot.id,
+        candidateName: input.candidateName,
         visaType: input.visaType,
         startsAt: slot.startsAt,
         endsAt: slot.endsAt,
       });
-      return toView(row);
+      return toView(row, advisor.name);
     } catch (error) {
       if (isSlotConstraint(error)) {
         throw new BookingError("slot_unavailable", slotUnavailable);
       }
-
       throw error;
     }
   });
@@ -113,51 +104,37 @@ export async function confirmBooking(
   db: Database,
   id: string,
 ): Promise<BookingView> {
-  await db.transaction(async (tx) => {
-    await expireElapsedHolds(tx);
-  });
-
   const outcome = await db.transaction(async (tx) => {
-    const confirmed = await confirmOpenHold(tx, id);
+    const existing = await lockBookingById(tx, id);
 
-    if (confirmed !== null) {
-      return { kind: "view" as const, view: toView(confirmed) };
+    if (!existing)
+      return new BookingError("booking_not_found", "Booking not found");
+
+    if (existing.status === BookingStatus.confirmed)
+      return toView(existing, existing.advisorName);
+
+    if (existing.status === BookingStatus.held) {
+      const confirmed = await confirmOpenHold(tx, existing.id);
+
+      if (confirmed) return toView(confirmed, existing.advisorName);
+
+      const expired = await markHoldExpired(tx, existing.id);
+
+      if (!expired)
+        return new BookingError("not_held", "Booking cannot be confirmed");
+
+      return new BookingError("hold_expired", "Hold has expired");
     }
 
-    const existing = await findBookingById(tx, id);
+    if (existing.status === BookingStatus.expired)
+      return new BookingError("hold_expired", "Hold has expired");
 
-    if (existing === null) {
-      return { kind: "missing" as const };
-    }
-
-    if (existing.status === "confirmed") {
-      return { kind: "view" as const, view: toView(existing) };
-    }
-
-    if (existing.status === "held") {
-      await markHoldExpired(tx, id);
-    }
-
-    if (existing.status === "held" || existing.status === "expired") {
-      return { kind: "expired" as const };
-    }
-
-    return { kind: "not_held" as const };
+    return new BookingError("not_held", "Booking cannot be confirmed");
   });
 
-  if (outcome.kind === "view") {
-    return outcome.view;
-  }
+  if (outcome instanceof BookingError) throw outcome;
 
-  if (outcome.kind === "missing") {
-    throw new BookingError("booking_not_found", "Booking not found");
-  }
-
-  if (outcome.kind === "expired") {
-    throw new BookingError("hold_expired", "Hold has expired");
-  }
-
-  throw new BookingError("not_held", "Booking cannot be confirmed");
+  return outcome;
 }
 
 export async function listBookings(
@@ -165,7 +142,6 @@ export async function listBookings(
   query: ListBookingsQuery,
 ): Promise<{ bookings: BookingView[]; total: number }> {
   return db.transaction(async (tx) => {
-    await expireElapsedHolds(tx);
     const total = await countBookingRows(tx, query.status);
     const rows = await listBookingRows(tx, {
       status: query.status,
@@ -173,6 +149,6 @@ export async function listBookings(
       offset: (query.page - 1) * query.limit,
     });
 
-    return { bookings: rows.map(toView), total };
+    return { bookings: rows.map((row) => toView(row, row.advisorName)), total };
   });
 }

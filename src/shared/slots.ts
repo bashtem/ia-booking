@@ -6,6 +6,7 @@ export type Interval = {
 };
 
 export type SlotWindow = Interval & {
+  id: string;
   advisorId: string;
   advisorName: string;
 };
@@ -62,6 +63,7 @@ export function deriveBookableSlots<Visa extends string>(
     while (start < window.endsAt) {
       for (const visa of visas) {
         const slot = {
+          id: window.id,
           advisorId: window.advisorId,
           advisorName: window.advisorName,
           visaType: visa.visaType,

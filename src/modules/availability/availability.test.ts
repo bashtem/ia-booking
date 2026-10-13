@@ -25,6 +25,7 @@ function window(
   end: string,
 ): SlotWindow {
   return {
+    id: `${advisorId}:${start}`,
     advisorId,
     advisorName,
     startsAt: at(start),

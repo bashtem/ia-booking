@@ -32,4 +32,3 @@ export function httpStatusForBookingError(
       return 409;
   }
 }
-

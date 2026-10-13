@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { BookingError, httpStatusForBookingError } from "../../shared/errors.ts";
+import {
+  BookingError,
+  httpStatusForBookingError,
+} from "./booking.errors.ts";
 
 describe("booking errors", () => {
   it("maps missing records to 404 and slot conflicts to 409", () => {

@@ -1,11 +1,11 @@
 import { sql } from "drizzle-orm";
-import { check, pgTable, text } from "drizzle-orm/pg-core";
+import { check, pgTable, text, varchar } from "drizzle-orm/pg-core";
 import { timestamps } from "./timestamps.ts";
 
 export const advisors = pgTable(
   "advisors",
   {
-    id: text("id").primaryKey(),
+    id: varchar("id", { length: 50 }).primaryKey(),
     name: text("name").notNull(),
     ...timestamps(),
   },

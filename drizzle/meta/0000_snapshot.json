@@ -10,7 +10,7 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "text",
+          "type": "varchar(50)",
           "primaryKey": true,
           "notNull": true
         },
@@ -65,7 +65,7 @@
         },
         "advisor_id": {
           "name": "advisor_id",
-          "type": "text",
+          "type": "varchar(50)",
           "primaryKey": false,
           "notNull": true
         },
@@ -145,19 +145,25 @@
         },
         "advisor_id": {
           "name": "advisor_id",
-          "type": "text",
+          "type": "varchar(50)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "availability_window_id": {
+          "name": "availability_window_id",
+          "type": "uuid",
           "primaryKey": false,
           "notNull": true
         },
         "candidate_name": {
           "name": "candidate_name",
-          "type": "text",
+          "type": "varchar(150)",
           "primaryKey": false,
           "notNull": true
         },
         "visa_type": {
           "name": "visa_type",
-          "type": "text",
+          "type": "varchar(1)",
           "primaryKey": false,
           "notNull": true
         },
@@ -175,12 +181,18 @@
         },
         "status": {
           "name": "status",
-          "type": "text",
+          "type": "varchar(20)",
           "primaryKey": false,
           "notNull": true
         },
-        "held_until": {
-          "name": "held_until",
+        "hold_expires_at": {
+          "name": "hold_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "confirmed_at": {
+          "name": "confirmed_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
@@ -226,7 +238,7 @@
           "name": "bookings_active_holds_idx",
           "columns": [
             {
-              "expression": "held_until",
+              "expression": "hold_expires_at",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -252,12 +264,29 @@
           ],
           "onDelete": "no action",
           "onUpdate": "no action"
+        },
+        "bookings_availability_window_id_availability_windows_id_fk": {
+          "name": "bookings_availability_window_id_availability_windows_id_fk",
+          "tableFrom": "bookings",
+          "tableTo": "availability_windows",
+          "columnsFrom": [
+            "availability_window_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
+        "bookings_visa_type": {
+          "name": "bookings_visa_type",
+          "value": "\"bookings\".\"visa_type\" in ('A', 'B')"
+        },
         "bookings_status": {
           "name": "bookings_status",
           "value": "\"bookings\".\"status\" in ('held', 'confirmed', 'expired', 'cancelled')"
@@ -272,7 +301,11 @@
         },
         "bookings_hold_has_deadline": {
           "name": "bookings_hold_has_deadline",
-          "value": "\"bookings\".\"status\" <> 'held' or \"bookings\".\"held_until\" is not null"
+          "value": "\"bookings\".\"status\" <> 'held' or \"bookings\".\"hold_expires_at\" is not null"
+        },
+        "bookings_confirmed_has_timestamp": {
+          "name": "bookings_confirmed_has_timestamp",
+          "value": "\"bookings\".\"status\" <> 'confirmed' or \"bookings\".\"confirmed_at\" is not null"
         }
       },
       "isRLSEnabled": false

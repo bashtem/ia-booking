@@ -1,7 +1,7 @@
 CREATE EXTENSION IF NOT EXISTS "btree_gist";
 --> statement-breakpoint
 CREATE TABLE "advisors" (
-	"id" text PRIMARY KEY NOT NULL,
+	"id" varchar(50) PRIMARY KEY NOT NULL,
 	"name" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -12,7 +12,7 @@ CREATE TABLE "advisors" (
 --> statement-breakpoint
 CREATE TABLE "availability_windows" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"advisor_id" text NOT NULL,
+	"advisor_id" varchar(50) NOT NULL,
 	"starts_at" timestamp with time zone NOT NULL,
 	"ends_at" timestamp with time zone NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
@@ -24,26 +24,31 @@ CREATE TABLE "availability_windows" (
 --> statement-breakpoint
 CREATE TABLE "bookings" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
-	"advisor_id" text NOT NULL,
-	"candidate_name" text NOT NULL,
-	"visa_type" text NOT NULL,
+	"advisor_id" varchar(50) NOT NULL,
+	"availability_window_id" uuid NOT NULL,
+	"candidate_name" varchar(150) NOT NULL,
+	"visa_type" varchar(1) NOT NULL,
 	"starts_at" timestamp with time zone NOT NULL,
 	"ends_at" timestamp with time zone NOT NULL,
-	"status" text NOT NULL,
-	"held_until" timestamp with time zone,
+	"status" varchar(20) NOT NULL,
+	"hold_expires_at" timestamp with time zone,
+	"confirmed_at" timestamp with time zone,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
+	CONSTRAINT "bookings_visa_type" CHECK ("bookings"."visa_type" in ('A', 'B')),
 	CONSTRAINT "bookings_status" CHECK ("bookings"."status" in ('held', 'confirmed', 'expired', 'cancelled')),
 	CONSTRAINT "bookings_duration" CHECK (("bookings"."visa_type" = 'A' and "bookings"."ends_at" = "bookings"."starts_at" + interval '30 minutes') or ("bookings"."visa_type" = 'B' and "bookings"."ends_at" = "bookings"."starts_at" + interval '60 minutes')),
-	CONSTRAINT "bookings_hold_has_deadline" CHECK ("bookings"."status" <> 'held' or "bookings"."held_until" is not null),
+	CONSTRAINT "bookings_hold_has_deadline" CHECK ("bookings"."status" <> 'held' or "bookings"."hold_expires_at" is not null),
+	CONSTRAINT "bookings_confirmed_has_timestamp" CHECK ("bookings"."status" <> 'confirmed' or "bookings"."confirmed_at" is not null),
 	CONSTRAINT "bookings_candidate_name_not_blank" CHECK (length(btrim("bookings"."candidate_name")) > 0)
 );
 
 --> statement-breakpoint
 ALTER TABLE "availability_windows" ADD CONSTRAINT "availability_windows_advisor_id_advisors_id_fk" FOREIGN KEY ("advisor_id") REFERENCES "public"."advisors"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "bookings" ADD CONSTRAINT "bookings_advisor_id_advisors_id_fk" FOREIGN KEY ("advisor_id") REFERENCES "public"."advisors"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "bookings" ADD CONSTRAINT "bookings_availability_window_id_availability_windows_id_fk" FOREIGN KEY ("availability_window_id") REFERENCES "public"."availability_windows"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "bookings_advisor_starts_idx" ON "bookings" USING btree ("advisor_id","starts_at");--> statement-breakpoint
-CREATE INDEX "bookings_active_holds_idx" ON "bookings" USING btree ("held_until") WHERE "bookings"."status" = 'held';
+CREATE INDEX "bookings_active_holds_idx" ON "bookings" USING btree ("hold_expires_at") WHERE "bookings"."status" = 'held';
 
 --> statement-breakpoint
 ALTER TABLE "availability_windows" ADD CONSTRAINT "availability_windows_no_overlap" EXCLUDE USING gist (
@@ -95,11 +100,12 @@ BEGIN
   IF NOT EXISTS (
     SELECT 1
     FROM availability_windows
-    WHERE advisor_id = NEW.advisor_id
+    WHERE id = NEW.availability_window_id
+      AND advisor_id = NEW.advisor_id
       AND starts_at <= NEW.starts_at
       AND ends_at >= NEW.ends_at
   ) THEN
-    RAISE EXCEPTION 'booking must fall inside an availability window'
+    RAISE EXCEPTION 'booking must fall inside its availability window'
       USING ERRCODE = '23514';
   END IF;
 
@@ -109,7 +115,7 @@ $$;
 
 --> statement-breakpoint
 CREATE TRIGGER bookings_must_fit_window
-BEFORE INSERT OR UPDATE OF advisor_id, starts_at, ends_at ON bookings
+BEFORE INSERT OR UPDATE OF advisor_id, availability_window_id, starts_at, ends_at ON bookings
 FOR EACH ROW
 EXECUTE FUNCTION bookings_must_fit_window();
 
@@ -122,10 +128,8 @@ BEGIN
   IF EXISTS (
     SELECT 1
     FROM bookings
-    WHERE advisor_id = OLD.advisor_id
+    WHERE availability_window_id = OLD.id
       AND status IN ('held', 'confirmed')
-      AND starts_at >= OLD.starts_at
-      AND ends_at <= OLD.ends_at
       AND (
         TG_OP = 'DELETE'
         OR starts_at < NEW.starts_at

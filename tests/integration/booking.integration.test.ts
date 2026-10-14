@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import { before, describe, it } from "node:test";
+import { beforeAll, describe, expect, it } from "vitest";
 import { eq, inArray } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { seedDatabase } from "../../src/db/seed.ts";
@@ -26,7 +25,7 @@ type Booking = {
   candidateName: string;
 };
 
-before(async () => {
+beforeAll(async () => {
   await seedDatabase(testEnv.DATABASE_URL);
 });
 
@@ -71,17 +70,17 @@ function isBooking(value: unknown): value is Booking {
 
 function readSlots(body: unknown): Slot[] {
   if (!isRecord(body) || body.success !== true || !Array.isArray(body.data)) {
-    assert.fail("expected slot list");
+    expect.fail("expected slot list");
   }
 
   const slots = body.data.filter(isSlot);
-  assert.equal(slots.length, body.data.length);
+  expect(slots).toHaveLength(body.data.length);
   return slots;
 }
 
 function readBooking(body: unknown): Booking {
   if (!isRecord(body) || body.success !== true || !isBooking(body.data)) {
-    assert.fail("expected booking");
+    expect.fail("expected booking");
   }
 
   return body.data;
@@ -89,11 +88,11 @@ function readBooking(body: unknown): Booking {
 
 function readBookings(body: unknown): Booking[] {
   if (!isRecord(body) || body.success !== true || !Array.isArray(body.data)) {
-    assert.fail("expected booking list");
+    expect.fail("expected booking list");
   }
 
   const rows = body.data.filter(isBooking);
-  assert.equal(rows.length, body.data.length);
+  expect(rows).toHaveLength(body.data.length);
   return rows;
 }
 
@@ -105,7 +104,7 @@ function readError(body: unknown): { code: string; message: string } {
     typeof body.error.code !== "string" ||
     typeof body.error.message !== "string"
   ) {
-    assert.fail("expected error");
+    expect.fail("expected error");
   }
 
   return { code: body.error.code, message: body.error.message };
@@ -145,21 +144,37 @@ describe("booking flow", () => {
   it("returns bookable slots and an empty list for an unknown advisor", async () => {
     await withApi(async (app) => {
       const response = await app.inject({ method: "GET", url: "/availability" });
-      assert.equal(response.statusCode, 200);
+      expect(response.statusCode).toBe(200);
       const slots = readSlots(response.json());
 
-      assert.equal(hasSlot(slots, "ia-001", "A", "2026-11-10T09:00:00.000Z"), true);
-      assert.equal(hasSlot(slots, "ia-001", "A", "2026-11-10T10:30:00.000Z"), false);
-      assert.equal(hasSlot(slots, "ia-001", "A", "2026-11-11T14:00:00.000Z"), false);
-      assert.equal(hasSlot(slots, "ia-002", "B", "2026-11-10T09:00:00.000Z"), false);
-      assert.equal(hasSlot(slots, "ia-002", "A", "2026-11-10T09:33:00.000Z"), true);
+      expect(hasSlot(slots, "ia-001", "A", "2026-11-10T09:00:00.000Z")).toBe(true);
+      expect(hasSlot(slots, "ia-001", "A", "2026-11-10T10:30:00.000Z")).toBe(false);
+      expect(hasSlot(slots, "ia-001", "A", "2026-11-11T14:00:00.000Z")).toBe(false);
+      expect(hasSlot(slots, "ia-002", "B", "2026-11-10T09:00:00.000Z")).toBe(false);
+      expect(hasSlot(slots, "ia-002", "A", "2026-11-10T09:33:00.000Z")).toBe(true);
 
       const filtered = await app.inject({
         method: "GET",
         url: "/availability?advisorId=missing&visaType=A",
       });
-      assert.equal(filtered.statusCode, 200);
-      assert.deepEqual(filtered.json(), { success: true, data: [] });
+      expect(filtered.statusCode).toBe(200);
+      expect(filtered.json()).toEqual({ success: true, data: [] });
+    });
+  });
+
+  it("returns only the requested advisor and visa", async () => {
+    await withApi(async (app) => {
+      const response = await app.inject({
+        method: "GET",
+        url: "/availability?advisorId=ia-001&visaType=A",
+      });
+      expect(response.statusCode).toBe(200);
+      const slots = readSlots(response.json());
+
+      expect(hasSlot(slots, "ia-001", "A", "2026-11-10T09:00:00.000Z")).toBe(true);
+      expect(slots.every((slot) => slot.advisorId === "ia-001" && slot.visaType === "A")).toBe(
+        true,
+      );
     });
   });
 
@@ -171,24 +186,27 @@ describe("booking flow", () => {
         advisorId: "ia-001",
         startsAt: "2026-11-10T10:00:00+01:00",
       });
-      assert.equal(created.statusCode, 200);
+      expect(created.statusCode).toBe(200);
       const booking = readBooking(created.json());
-      assert.equal(booking.startsAt, "2026-11-10T09:00:00.000Z");
-      assert.equal(booking.endsAt, "2026-11-10T09:30:00.000Z");
-      assert.equal(booking.status, "held");
-      assert.equal(booking.confirmedAt, null);
-      assert.ok(booking.availabilityWindowId.length > 0);
-      assert.ok(booking.holdExpiresAt !== null);
+      expect(booking.startsAt).toBe("2026-11-10T09:00:00.000Z");
+      expect(booking.endsAt).toBe("2026-11-10T09:30:00.000Z");
+      expect(booking.status).toBe("held");
+      expect(booking.confirmedAt).toBeNull();
+      expect(booking.availabilityWindowId.length).toBeGreaterThan(0);
+      if (booking.holdExpiresAt === null) {
+        expect.fail("expected hold expiry");
+      }
       const remaining = new Date(booking.holdExpiresAt).getTime() - Date.now();
-      assert.ok(remaining > 8 * 60_000 && remaining < 12 * 60_000);
+      expect(remaining).toBeGreaterThan(8 * 60_000);
+      expect(remaining).toBeLessThan(12 * 60_000);
 
       const hidden = await app.inject({
         method: "GET",
         url: "/availability?advisorId=ia-001&visaType=A",
       });
       const slots = readSlots(hidden.json());
-      assert.equal(hasSlot(slots, "ia-001", "A", "2026-11-10T09:00:00.000Z"), false);
-      assert.equal(hasSlot(slots, "ia-001", "A", "2026-11-10T09:30:00.000Z"), true);
+      expect(hasSlot(slots, "ia-001", "A", "2026-11-10T09:00:00.000Z")).toBe(false);
+      expect(hasSlot(slots, "ia-001", "A", "2026-11-10T09:30:00.000Z")).toBe(true);
 
       const overlap = await book(app, {
         candidateName: "Grace Hopper",
@@ -196,8 +214,8 @@ describe("booking flow", () => {
         advisorId: "ia-001",
         startsAt: "2026-11-10T09:00:00.000Z",
       });
-      assert.equal(overlap.statusCode, 409);
-      assert.equal(readError(overlap.json()).code, "slot_unavailable");
+      expect(overlap.statusCode).toBe(409);
+      expect(readError(overlap.json()).code).toBe("slot_unavailable");
 
       const otherAdvisor = await book(app, {
         candidateName: "Grace Hopper",
@@ -205,8 +223,8 @@ describe("booking flow", () => {
         advisorId: "ia-002",
         startsAt: "2026-11-10T09:00:00.000Z",
       });
-      assert.equal(otherAdvisor.statusCode, 200);
-      assert.equal(readBooking(otherAdvisor.json()).endsAt, "2026-11-10T09:30:00.000Z");
+      expect(otherAdvisor.statusCode).toBe(200);
+      expect(readBooking(otherAdvisor.json()).endsAt).toBe("2026-11-10T09:30:00.000Z");
     });
   });
 
@@ -254,17 +272,17 @@ describe("booking flow", () => {
         advisorId: "ia-001",
         startsAt: "2026-11-10T09:00:00.000Z",
       });
-      assert.equal(replacement.statusCode, 200);
-      assert.equal(readBooking(replacement.json()).status, "held");
+      expect(replacement.statusCode).toBe(200);
+      expect(readBooking(replacement.json()).status).toBe("held");
 
       const rows = await app.db
         .select({ id: bookings.id, status: bookings.status })
         .from(bookings);
       const statusOf = (id: string) => rows.find((row) => row.id === id)?.status;
 
-      assert.equal(statusOf(blocked.id), "expired");
-      assert.equal(statusOf(later.id), "held");
-      assert.equal(statusOf(otherAdvisor.id), "held");
+      expect(statusOf(blocked.id)).toBe("expired");
+      expect(statusOf(later.id)).toBe("held");
+      expect(statusOf(otherAdvisor.id)).toBe("held");
     });
   });
 
@@ -276,8 +294,8 @@ describe("booking flow", () => {
         advisorId: "ia-001",
         startsAt: "2026-11-10T09:07:00.000Z",
       });
-      assert.equal(offGrid.statusCode, 409);
-      assert.equal(readError(offGrid.json()).code, "slot_unavailable");
+      expect(offGrid.statusCode).toBe(409);
+      expect(readError(offGrid.json()).code).toBe("slot_unavailable");
 
       const shortWindow = await book(app, {
         candidateName: "Ada Lovelace",
@@ -285,8 +303,8 @@ describe("booking flow", () => {
         advisorId: "ia-001",
         startsAt: "2026-11-11T14:00:00.000Z",
       });
-      assert.equal(shortWindow.statusCode, 409);
-      assert.equal(readError(shortWindow.json()).code, "slot_unavailable");
+      expect(shortWindow.statusCode).toBe(409);
+      expect(readError(shortWindow.json()).code).toBe("slot_unavailable");
 
       const blank = await book(app, {
         candidateName: "   ",
@@ -294,8 +312,8 @@ describe("booking flow", () => {
         advisorId: "ia-001",
         startsAt: "2026-11-10T09:00:00.000Z",
       });
-      assert.equal(blank.statusCode, 400);
-      assert.equal(readError(blank.json()).code, "invalid_request");
+      expect(blank.statusCode).toBe(400);
+      expect(readError(blank.json()).code).toBe("invalid_request");
 
       const missingAdvisor = await book(app, {
         candidateName: "Ada Lovelace",
@@ -303,8 +321,8 @@ describe("booking flow", () => {
         advisorId: "missing",
         startsAt: "2026-11-10T09:00:00.000Z",
       });
-      assert.equal(missingAdvisor.statusCode, 404);
-      assert.equal(readError(missingAdvisor.json()).code, "advisor_not_found");
+      expect(missingAdvisor.statusCode).toBe(404);
+      expect(readError(missingAdvisor.json()).code).toBe("advisor_not_found");
     });
   });
 
@@ -317,23 +335,23 @@ describe("booking flow", () => {
         startsAt: "2026-11-10T09:00:00.000Z",
       });
       const booking = readBooking(created.json());
-      assert.equal(booking.endsAt, "2026-11-10T10:00:00.000Z");
+      expect(booking.endsAt).toBe("2026-11-10T10:00:00.000Z");
 
       const confirmed = await app.inject({
         method: "POST",
         url: `/bookings/${booking.id}/confirm`,
       });
-      assert.equal(confirmed.statusCode, 200);
+      expect(confirmed.statusCode).toBe(200);
       const confirmedBooking = readBooking(confirmed.json());
-      assert.equal(confirmedBooking.status, "confirmed");
-      assert.equal(typeof confirmedBooking.confirmedAt, "string");
+      expect(confirmedBooking.status).toBe("confirmed");
+      expect(confirmedBooking.confirmedAt).toEqual(expect.any(String));
 
       const again = await app.inject({
         method: "POST",
         url: `/bookings/${booking.id}/confirm`,
       });
-      assert.equal(again.statusCode, 200);
-      assert.equal(readBooking(again.json()).id, booking.id);
+      expect(again.statusCode).toBe(200);
+      expect(readBooking(again.json()).id).toBe(booking.id);
 
       const slots = readSlots(
         (
@@ -343,8 +361,50 @@ describe("booking flow", () => {
           })
         ).json(),
       );
-      assert.equal(hasSlot(slots, "ia-001", "A", "2026-11-10T09:00:00.000Z"), false);
-      assert.equal(hasSlot(slots, "ia-001", "A", "2026-11-10T09:30:00.000Z"), false);
+      expect(hasSlot(slots, "ia-001", "A", "2026-11-10T09:00:00.000Z")).toBe(false);
+      expect(hasSlot(slots, "ia-001", "A", "2026-11-10T09:30:00.000Z")).toBe(false);
+    });
+  });
+
+  it("keeps a confirmed booking after the hold deadline and rejects a second request", async () => {
+    await withApi(async (app) => {
+      const created = await book(app, {
+        candidateName: "Ada Lovelace",
+        visaType: "A",
+        advisorId: "ia-001",
+        startsAt: "2026-11-10T09:00:00.000Z",
+      });
+      const booking = readBooking(created.json());
+      const confirmed = await app.inject({
+        method: "POST",
+        url: `/bookings/${booking.id}/confirm`,
+      });
+      expect(confirmed.statusCode).toBe(200);
+
+      await app.db
+        .update(bookings)
+        .set({ holdExpiresAt: new Date(Date.now() - 60_000) })
+        .where(eq(bookings.id, booking.id));
+
+      const slots = readSlots(
+        (
+          await app.inject({
+            method: "GET",
+            url: "/availability?advisorId=ia-001&visaType=A",
+          })
+        ).json(),
+      );
+      expect(hasSlot(slots, "ia-001", "A", "2026-11-10T09:00:00.000Z")).toBe(false);
+      expect(hasSlot(slots, "ia-001", "A", "2026-11-10T09:30:00.000Z")).toBe(true);
+
+      const overlap = await book(app, {
+        candidateName: "Grace Hopper",
+        visaType: "A",
+        advisorId: "ia-001",
+        startsAt: "2026-11-10T09:00:00.000Z",
+      });
+      expect(overlap.statusCode).toBe(409);
+      expect(readError(overlap.json()).code).toBe("slot_unavailable");
     });
   });
 
@@ -366,8 +426,8 @@ describe("booking flow", () => {
         method: "POST",
         url: `/bookings/${booking.id}/confirm`,
       });
-      assert.equal(confirm.statusCode, 409);
-      assert.equal(readError(confirm.json()).code, "hold_expired");
+      expect(confirm.statusCode).toBe(409);
+      expect(readError(confirm.json()).code).toBe("hold_expired");
 
       const slots = readSlots(
         (
@@ -377,19 +437,21 @@ describe("booking flow", () => {
           })
         ).json(),
       );
-      assert.equal(hasSlot(slots, "ia-001", "A", "2026-11-10T09:00:00.000Z"), true);
+      expect(hasSlot(slots, "ia-001", "A", "2026-11-10T09:00:00.000Z")).toBe(true);
 
       const listed = await app.inject({
         method: "GET",
         url: "/bookings?status=expired",
       });
-      assert.equal(listed.statusCode, 200);
+      expect(listed.statusCode).toBe(200);
       const listedBody: unknown = listed.json();
       const rows = readBookings(listedBody);
-      assert.equal(rows.length, 1);
-      assert.equal(rows[0]?.status, "expired");
-      assert.ok(isRecord(listedBody));
-      assert.deepEqual(listedBody.pagination, {
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.status).toBe("expired");
+      if (!isRecord(listedBody)) {
+        expect.fail("expected booking list");
+      }
+      expect(listedBody.pagination).toEqual({
         page: 1,
         limit: 20,
         total: 1,
@@ -400,7 +462,7 @@ describe("booking flow", () => {
         method: "GET",
         url: "/bookings?status=held",
       });
-      assert.deepEqual(held.json(), {
+      expect(held.json()).toEqual({
         success: true,
         data: [],
         pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },
@@ -410,8 +472,8 @@ describe("booking flow", () => {
         method: "GET",
         url: "/bookings?page=0",
       });
-      assert.equal(badPage.statusCode, 400);
-      assert.equal(readError(badPage.json()).code, "invalid_request");
+      expect(badPage.statusCode).toBe(400);
+      expect(readError(badPage.json()).code).toBe("invalid_request");
     });
   });
 
@@ -421,8 +483,8 @@ describe("booking flow", () => {
         method: "POST",
         url: "/bookings/00000000-0000-4000-8000-000000000000/confirm",
       });
-      assert.equal(confirm.statusCode, 404);
-      assert.equal(readError(confirm.json()).code, "booking_not_found");
+      expect(confirm.statusCode).toBe(404);
+      expect(readError(confirm.json()).code).toBe("booking_not_found");
     });
   });
 
@@ -446,14 +508,14 @@ describe("booking flow", () => {
         advisorId: "ia-001",
         startsAt: "2026-11-10T09:00:00.000Z",
       });
-      assert.equal(replacement.statusCode, 200);
+      expect(replacement.statusCode).toBe(200);
 
       const taken = await app.inject({
         method: "POST",
         url: `/bookings/${booking.id}/confirm`,
       });
-      assert.equal(taken.statusCode, 409);
-      assert.equal(readError(taken.json()).code, "hold_expired");
+      expect(taken.statusCode).toBe(409);
+      expect(readError(taken.json()).code).toBe("hold_expired");
 
       const cancelled = await book(app, {
         candidateName: "Ada Lovelace",
@@ -471,8 +533,43 @@ describe("booking flow", () => {
         method: "POST",
         url: `/bookings/${cancelledBooking.id}/confirm`,
       });
-      assert.equal(confirmCancelled.statusCode, 409);
-      assert.equal(readError(confirmCancelled.json()).code, "not_held");
+      expect(confirmCancelled.statusCode).toBe(409);
+      expect(readError(confirmCancelled.json()).code).toBe("not_held");
+    });
+  });
+
+  it("frees a slot when the booking is cancelled", async () => {
+    await withApi(async (app) => {
+      const created = await book(app, {
+        candidateName: "Ada Lovelace",
+        visaType: "A",
+        advisorId: "ia-001",
+        startsAt: "2026-11-10T09:30:00.000Z",
+      });
+      const booking = readBooking(created.json());
+      await app.db
+        .update(bookings)
+        .set({ status: "cancelled" })
+        .where(eq(bookings.id, booking.id));
+
+      const slots = readSlots(
+        (
+          await app.inject({
+            method: "GET",
+            url: "/availability?advisorId=ia-001&visaType=A",
+          })
+        ).json(),
+      );
+      expect(hasSlot(slots, "ia-001", "A", "2026-11-10T09:30:00.000Z")).toBe(true);
+
+      const replacement = await book(app, {
+        candidateName: "Grace Hopper",
+        visaType: "A",
+        advisorId: "ia-001",
+        startsAt: "2026-11-10T09:30:00.000Z",
+      });
+      expect(replacement.statusCode).toBe(200);
+      expect(readBooking(replacement.json()).status).toBe("held");
     });
   });
 });

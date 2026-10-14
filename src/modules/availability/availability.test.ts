@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, expect, it } from "vitest";
 import {
   deriveBookableSlots,
   parseInstant,
@@ -82,55 +81,53 @@ describe("deriveBookableSlots", () => {
   );
 
   it("steps 30 minutes from each window and keeps a slot that ends on the window end", () => {
-    assert.deepEqual(starts(slots, "ia-001", "A"), [
+    expect(starts(slots, "ia-001", "A")).toEqual([
       "2026-11-10T09:00:00.000Z",
       "2026-11-10T09:30:00.000Z",
       "2026-11-10T10:00:00.000Z",
     ]);
-    assert.deepEqual(starts(slots, "ia-001", "B"), [
+    expect(starts(slots, "ia-001", "B")).toEqual([
       "2026-11-10T09:00:00.000Z",
       "2026-11-10T09:30:00.000Z",
     ]);
-    assert.deepEqual(starts(slots, "ia-002", "A"), [
+    expect(starts(slots, "ia-002", "A")).toEqual([
       "2026-11-10T09:00:00.000Z",
       "2026-11-10T09:33:00.000Z",
       "2026-11-10T10:03:00.000Z",
       "2026-11-10T10:33:00.000Z",
     ]);
-    assert.deepEqual(starts(slots, "ia-002", "B"), [
+    expect(starts(slots, "ia-002", "B")).toEqual([
       "2026-11-10T09:33:00.000Z",
       "2026-11-10T10:03:00.000Z",
     ]);
   });
 
   it("drops windows that cannot hold the appointment", () => {
-    assert.equal(
+    expect(
       slots.some((slot) => slot.startsAt.getTime() === at("2026-11-11T14:00:00Z").getTime()),
-      false,
-    );
-    assert.equal(
+    ).toBe(false);
+    expect(
       slots.some((slot) => slot.startsAt.getTime() === at("2026-11-18T14:00:00Z").getTime()),
-      false,
-    );
+    ).toBe(false);
   });
 
   it("does not build a slot across the three-minute gap", () => {
-    assert.equal(
+    expect(
       slots.some(
         (slot) =>
           slot.advisorId === "ia-002" &&
           slot.startsAt.getTime() === at("2026-11-10T09:00:00Z").getTime() &&
           slot.endsAt.getTime() === at("2026-11-10T10:00:00Z").getTime(),
       ),
-      false,
-    );
+    ).toBe(false);
   });
 
   it("sorts by start, advisor, then visa", () => {
-    assert.deepEqual(
-      slots.slice(0, 3).map((slot) => `${slot.advisorId}:${slot.visaType}`),
-      ["ia-001:A", "ia-001:B", "ia-002:A"],
-    );
+    expect(slots.slice(0, 3).map((slot) => `${slot.advisorId}:${slot.visaType}`)).toEqual([
+      "ia-001:A",
+      "ia-001:B",
+      "ia-002:A",
+    ]);
   });
 
   it("removes every overlapping slot for that advisor and keeps the next adjacent one", () => {
@@ -143,14 +140,14 @@ describe("deriveBookableSlots", () => {
     ];
     const remaining = deriveBookableSlots([sofia, rajanExact], busy, visas);
 
-    assert.deepEqual(starts(remaining, "ia-001", "A"), [
+    expect(starts(remaining, "ia-001", "A")).toEqual([
       "2026-11-10T09:30:00.000Z",
       "2026-11-10T10:00:00.000Z",
     ]);
-    assert.deepEqual(starts(remaining, "ia-001", "B"), [
+    expect(starts(remaining, "ia-001", "B")).toEqual([
       "2026-11-10T09:30:00.000Z",
     ]);
-    assert.deepEqual(starts(remaining, "ia-002", "A"), [
+    expect(starts(remaining, "ia-002", "A")).toEqual([
       "2026-11-10T09:00:00.000Z",
     ]);
   });
@@ -158,24 +155,24 @@ describe("deriveBookableSlots", () => {
   it("keeps a total order when the same start, advisor, and visa appear twice", () => {
     const duplicated = deriveBookableSlots([rajanExact, rajanExact], [], visas);
 
-    assert.deepEqual(
+    expect(
       duplicated.map((slot) => `${slot.advisorId}:${slot.visaType}:${slot.startsAt.toISOString()}`),
-      ["ia-002:A:2026-11-10T09:00:00.000Z", "ia-002:A:2026-11-10T09:00:00.000Z"],
-    );
+    ).toEqual(["ia-002:A:2026-11-10T09:00:00.000Z", "ia-002:A:2026-11-10T09:00:00.000Z"]);
   });
 });
 
 describe("parseInstant", () => {
   it("accepts a timestamp with Z or a numeric offset", () => {
-    assert.equal(parseInstant("2026-11-10T09:00:00Z")?.toISOString(), "2026-11-10T09:00:00.000Z");
-    assert.equal(
-      parseInstant("2026-11-10T10:00:00+01:00")?.toISOString(),
+    expect(parseInstant("2026-11-10T09:00:00Z")?.toISOString()).toBe(
+      "2026-11-10T09:00:00.000Z",
+    );
+    expect(parseInstant("2026-11-10T10:00:00+01:00")?.toISOString()).toBe(
       "2026-11-10T09:00:00.000Z",
     );
   });
 
   it("rejects a date and a timestamp with no timezone", () => {
-    assert.equal(parseInstant("2026-11-10"), undefined);
-    assert.equal(parseInstant("2026-11-10T09:00:00"), undefined);
+    expect(parseInstant("2026-11-10")).toBeUndefined();
+    expect(parseInstant("2026-11-10T09:00:00")).toBeUndefined();
   });
 });

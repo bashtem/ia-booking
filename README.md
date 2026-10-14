@@ -31,7 +31,7 @@ src/
   routes.ts                         registers module route plugins
   types/fastify.d.ts                Fastify instance augmentation
 data/advisors.json                  November 2026 advisor availability fixture
-test/                               shared node:test helpers and health coverage
+test/                               shared test helpers and health coverage
 tests/integration/                  booking flow coverage
 ```
 

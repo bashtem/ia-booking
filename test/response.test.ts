@@ -1,17 +1,16 @@
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, expect, it } from "vitest";
 import { fail, ok, paginated } from "../src/shared/response.ts";
 
 describe("response helper", () => {
   it("wraps a resource in a success body", () => {
-    assert.deepEqual(ok({ id: "booking-uuid", status: "held" }), {
+    expect(ok({ id: "booking-uuid", status: "held" })).toEqual({
       success: true,
       data: { id: "booking-uuid", status: "held" },
     });
   });
 
   it("wraps a failure code and message", () => {
-    assert.deepEqual(fail("slot_unavailable", "Slot is no longer available"), {
+    expect(fail("slot_unavailable", "Slot is no longer available")).toEqual({
       success: false,
       error: {
         code: "slot_unavailable",
@@ -21,18 +20,17 @@ describe("response helper", () => {
   });
 
   it("adds pagination for a list", () => {
-    assert.deepEqual(
+    expect(
       paginated([{ id: "booking-uuid" }], { page: 1, limit: 20, total: 45 }),
-      {
-        success: true,
-        data: [{ id: "booking-uuid" }],
-        pagination: { page: 1, limit: 20, total: 45, totalPages: 3 },
-      },
-    );
+    ).toEqual({
+      success: true,
+      data: [{ id: "booking-uuid" }],
+      pagination: { page: 1, limit: 20, total: 45, totalPages: 3 },
+    });
   });
 
   it("reports zero pages when nothing matches", () => {
-    assert.deepEqual(paginated([], { page: 1, limit: 20, total: 0 }), {
+    expect(paginated([], { page: 1, limit: 20, total: 0 })).toEqual({
       success: true,
       data: [],
       pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },

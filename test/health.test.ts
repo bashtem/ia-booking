@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, expect, it } from "vitest";
 import { testEnv, withApp } from "./app.ts";
 
 describe("GET /health", () => {
@@ -7,9 +6,9 @@ describe("GET /health", () => {
     await withApp(testEnv, async (app) => {
       const response = await app.inject({ method: "GET", url: "/health" });
 
-      assert.equal(response.statusCode, 200);
-      assert.deepEqual(response.json(), { status: "ok" });
-      assert.equal(response.headers["x-content-type-options"], "nosniff");
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({ status: "ok" });
+      expect(response.headers["x-content-type-options"]).toBe("nosniff");
     });
   });
 });
@@ -25,8 +24,7 @@ describe("CORS", () => {
           headers: { origin: "http://localhost:5173" },
         });
 
-        assert.equal(
-          response.headers["access-control-allow-origin"],
+        expect(response.headers["access-control-allow-origin"]).toBe(
           "http://localhost:5173",
         );
       },
@@ -41,7 +39,7 @@ describe("CORS", () => {
         headers: { origin: "http://localhost:5173" },
       });
 
-      assert.equal(response.headers["access-control-allow-origin"], undefined);
+      expect(response.headers["access-control-allow-origin"]).toBeUndefined();
     });
   });
 });
@@ -51,8 +49,8 @@ describe("unknown routes", () => {
     await withApp(testEnv, async (app) => {
       const response = await app.inject({ method: "GET", url: "/missing" });
 
-      assert.equal(response.statusCode, 404);
-      assert.deepEqual(response.json(), {
+      expect(response.statusCode).toBe(404);
+      expect(response.json()).toEqual({
         success: false,
         error: {
           code: "not_found",

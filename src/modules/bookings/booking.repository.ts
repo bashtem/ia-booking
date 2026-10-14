@@ -138,7 +138,7 @@ export async function insertHeldBooking(
       startsAt: input.startsAt,
       endsAt: input.endsAt,
       status: BookingStatus.held,
-      holdExpiresAt: sql`now() + make_interval(mins => ${holdMinutes})`,
+      holdExpiresAt: sql`clock_timestamp() + make_interval(mins => ${holdMinutes})`,
     })
     .returning();
 

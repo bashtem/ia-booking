@@ -13,7 +13,7 @@
     "build": "tsc -p tsconfig.build.json --noEmit false --rewriteRelativeImportExtensions",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "oxlint",
-    "test": "node --test --test-reporter=spec test/**/*.test.ts src/modules/**/*.test.ts tests/**/*.test.ts",
+    "test": "vitest run",
     "db:up": "docker compose -f infra/dev/compose.yaml up -d --wait",
     "db:down": "docker compose -f infra/dev/compose.yaml down",
     "db:generate": "drizzle-kit generate",
@@ -44,7 +44,8 @@
     "oxlint": "^1.87.0",
     "oxlint-tsgolint": "^7.0.2004",
     "pino-pretty": "^13.2.0",
-    "typescript": "npm:@typescript/typescript6@^6.0.2"
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "vitest": "^5.0.4"
   },
   "packageManager": "pnpm@10.30.0+sha512.2b5753de015d480eeb88f5b5b61e0051f05b4301808a82ec8b840c9d2adf7748eb352c83f5c1593ca703ff1017295bc3fdd3119abb9686efc96b9fcb18200937",
   "pnpm": {

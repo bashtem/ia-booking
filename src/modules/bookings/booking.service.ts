@@ -20,7 +20,7 @@ import {
   type ListBookingsQuery,
 } from "./booking.types.ts";
 
-const slotUnavailable = "Slot is no longer available";
+const slotUnavailable = "This time slot is no longer available";
 
 function toView(row: BookingRow, advisorName: string): BookingView {
   return {

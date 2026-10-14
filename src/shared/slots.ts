@@ -46,10 +46,6 @@ export function overlaps(left: Interval, right: Interval): boolean {
   return left.startsAt < right.endsAt && right.startsAt < left.endsAt;
 }
 
-export function fitsInside(slot: Interval, window: Interval): boolean {
-  return slot.startsAt >= window.startsAt && slot.endsAt <= window.endsAt;
-}
-
 export function onSlotGrid(windowStart: Date, slotStart: Date): boolean {
   const elapsed = slotStart.getTime() - windowStart.getTime();
   const step = slotStepMinutes * 60_000;
@@ -57,57 +53,80 @@ export function onSlotGrid(windowStart: Date, slotStart: Date): boolean {
   return elapsed >= 0 && elapsed % step === 0;
 }
 
+function busyByAdvisor(ranges: readonly BusyRange[]): Map<string, BusyRange[]> {
+  const grouped = new Map<string, BusyRange[]>();
+
+  for (const range of ranges) {
+    const existing = grouped.get(range.advisorId);
+
+    if (existing) {
+      existing.push(range);
+    } else {
+      grouped.set(range.advisorId, [range]);
+    }
+  }
+
+  return grouped;
+}
+
+function slotsInWindow<Visa extends string>(
+  window: SlotWindow,
+  blocked: readonly BusyRange[],
+  visas: readonly VisaDuration<Visa>[],
+): BookableSlot<Visa>[] {
+  const slots: BookableSlot<Visa>[] = [];
+
+  for (
+    let start = window.startsAt;
+    start < window.endsAt;
+    start = addMinutes(start, slotStepMinutes)
+  ) {
+    for (const visa of visas) {
+      const endsAt = addMinutes(start, visa.durationMinutes);
+
+      if (endsAt > window.endsAt) {
+        continue;
+      }
+
+      const slot: BookableSlot<Visa> = {
+        id: window.id,
+        advisorId: window.advisorId,
+        advisorName: window.advisorName,
+        visaType: visa.visaType,
+        startsAt: start,
+        endsAt,
+      };
+
+      if (blocked.some((range) => overlaps(slot, range))) {
+        continue;
+      }
+
+      slots.push(slot);
+    }
+  }
+
+  return slots;
+}
+
+function compareBookableSlots<Visa extends string>(
+  left: BookableSlot<Visa>,
+  right: BookableSlot<Visa>,
+): number {
+  return (
+    left.startsAt.getTime() - right.startsAt.getTime() ||
+    left.advisorId.localeCompare(right.advisorId) ||
+    left.visaType.localeCompare(right.visaType)
+  );
+}
+
 export function deriveBookableSlots<Visa extends string>(
   windows: readonly SlotWindow[],
   busy: readonly BusyRange[],
   visas: readonly VisaDuration<Visa>[],
 ): BookableSlot<Visa>[] {
-  const slots: BookableSlot<Visa>[] = [];
+  const blocked = busyByAdvisor(busy);
 
-  for (const window of windows) {
-    let start = window.startsAt;
-
-    while (start < window.endsAt) {
-      for (const visa of visas) {
-        const slot = {
-          id: window.id,
-          advisorId: window.advisorId,
-          advisorName: window.advisorName,
-          visaType: visa.visaType,
-          startsAt: start,
-          endsAt: addMinutes(start, visa.durationMinutes),
-        };
-
-        const blocked = busy.some(
-          (range) => range.advisorId === window.advisorId && overlaps(slot, range),
-        );
-
-        if (fitsInside(slot, window) && !blocked) {
-          slots.push(slot);
-        }
-      }
-
-      start = addMinutes(start, slotStepMinutes);
-    }
-  }
-
-  slots.sort((left, right) => {
-    const byStart = left.startsAt.getTime() - right.startsAt.getTime();
-
-    if (byStart !== 0) {
-      return byStart;
-    }
-
-    if (left.advisorId !== right.advisorId) {
-      return left.advisorId < right.advisorId ? -1 : 1;
-    }
-
-    if (left.visaType !== right.visaType) {
-      return left.visaType < right.visaType ? -1 : 1;
-    }
-
-    return 0;
-  });
-
-  return slots;
+  return windows
+    .flatMap((window) => slotsInWindow(window, blocked.get(window.advisorId) ?? [], visas))
+    .sort(compareBookableSlots);
 }

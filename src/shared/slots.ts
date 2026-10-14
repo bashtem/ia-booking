@@ -50,6 +50,13 @@ export function fitsInside(slot: Interval, window: Interval): boolean {
   return slot.startsAt >= window.startsAt && slot.endsAt <= window.endsAt;
 }
 
+export function onSlotGrid(windowStart: Date, slotStart: Date): boolean {
+  const elapsed = slotStart.getTime() - windowStart.getTime();
+  const step = slotStepMinutes * 60_000;
+
+  return elapsed >= 0 && elapsed % step === 0;
+}
+
 export function deriveBookableSlots<Visa extends string>(
   windows: readonly SlotWindow[],
   busy: readonly BusyRange[],

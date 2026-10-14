@@ -10,7 +10,7 @@ import {
 import {
   bookingStatuses,
   type BookingStatus,
-} from "../../modules/bookings/booking.types.ts";
+} from "../../shared/booking-status.ts";
 import {
   visaTypeList,
   visaTypes,

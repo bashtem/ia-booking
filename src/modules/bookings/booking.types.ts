@@ -1,20 +1,10 @@
+import {
+  BookingStatus,
+  bookingStatuses,
+} from "../../shared/booking-status.ts";
 import type { VisaType } from "../../shared/visa-types.ts";
 
-export const BookingStatus = {
-  held: "held",
-  confirmed: "confirmed",
-  expired: "expired",
-  cancelled: "cancelled",
-} as const;
-
-export type BookingStatus = (typeof BookingStatus)[keyof typeof BookingStatus];
-
-export const bookingStatuses = [
-  BookingStatus.held,
-  BookingStatus.confirmed,
-  BookingStatus.expired,
-  BookingStatus.cancelled,
-] as const;
+export { BookingStatus, bookingStatuses };
 
 export type CreateBookingInput = {
   advisorId: string;

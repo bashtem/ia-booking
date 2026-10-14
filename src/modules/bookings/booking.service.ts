@@ -1,14 +1,16 @@
 import type { Database } from "../../db/client.ts";
+import { addMinutes, onSlotGrid } from "../../shared/slots.ts";
 import { visaTypes } from "../../shared/visa-types.ts";
 import { BookingError } from "./booking.errors.ts";
 import { findAdvisorById } from "../advisors/advisor.repository.ts";
-import { listOfferedSlots } from "../availability/availability.service.ts";
 import {
   confirmOpenHold,
   countBookingRows,
   expireOverlappingElapsedHolds,
+  hasActiveOverlap,
   insertHeldBooking,
   listBookingRows,
+  listContainingWindows,
   lockBookingById,
   markHoldExpired,
 } from "./booking.repository.ts";
@@ -64,31 +66,42 @@ export async function createBooking(
     if (!advisor)
       throw new BookingError("advisor_not_found", "Advisor not found");
 
-    const offered = await listOfferedSlots(tx, {
-      advisorId: input.advisorId,
-      visaType: input.visaType,
-    });
-
-    const slot = offered.find(
-      (item) => item.startsAt.getTime() === input.startsAt.getTime(),
+    const interval = {
+      startsAt: input.startsAt,
+      endsAt: addMinutes(
+        input.startsAt,
+        visaTypes[input.visaType].durationMinutes,
+      ),
+    };
+    const windows = await listContainingWindows(tx, input.advisorId, interval);
+    const window = windows.find((item) =>
+      onSlotGrid(item.startsAt, interval.startsAt),
     );
 
-    if (!slot) throw new BookingError("slot_unavailable", slotUnavailable);
+    if (!window) throw new BookingError("slot_unavailable", slotUnavailable);
 
     await expireOverlappingElapsedHolds(tx, {
       advisorId: input.advisorId,
-      startsAt: slot.startsAt,
-      endsAt: slot.endsAt,
+      startsAt: interval.startsAt,
+      endsAt: interval.endsAt,
     });
+
+    const taken = await hasActiveOverlap(tx, {
+      advisorId: input.advisorId,
+      startsAt: interval.startsAt,
+      endsAt: interval.endsAt,
+    });
+
+    if (taken) throw new BookingError("slot_unavailable", slotUnavailable);
 
     try {
       const row = await insertHeldBooking(tx, {
         advisorId: input.advisorId,
-        availabilityWindowId: slot.id,
+        availabilityWindowId: window.id,
         candidateName: input.candidateName,
         visaType: input.visaType,
-        startsAt: slot.startsAt,
-        endsAt: slot.endsAt,
+        startsAt: interval.startsAt,
+        endsAt: interval.endsAt,
       });
       return toView(row, advisor.name);
     } catch (error) {

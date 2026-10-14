@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deriveBookableSlots,
+  onSlotGrid,
   parseInstant,
   type BookableSlot,
   type BusyRange,
@@ -158,6 +159,26 @@ describe("deriveBookableSlots", () => {
     expect(
       duplicated.map((slot) => `${slot.advisorId}:${slot.visaType}:${slot.startsAt.toISOString()}`),
     ).toEqual(["ia-002:A:2026-11-10T09:00:00.000Z", "ia-002:A:2026-11-10T09:00:00.000Z"]);
+  });
+});
+
+describe("onSlotGrid", () => {
+  it("accepts a start that is a 30-minute step from the window", () => {
+    expect(onSlotGrid(at("2026-11-10T09:00:00Z"), at("2026-11-10T09:30:00Z"))).toBe(
+      true,
+    );
+    expect(onSlotGrid(at("2026-11-10T09:33:00Z"), at("2026-11-10T10:03:00Z"))).toBe(
+      true,
+    );
+  });
+
+  it("rejects a start before the window or off the step", () => {
+    expect(onSlotGrid(at("2026-11-10T09:00:00Z"), at("2026-11-10T09:07:00Z"))).toBe(
+      false,
+    );
+    expect(onSlotGrid(at("2026-11-10T09:33:00Z"), at("2026-11-10T09:00:00Z"))).toBe(
+      false,
+    );
   });
 });
 

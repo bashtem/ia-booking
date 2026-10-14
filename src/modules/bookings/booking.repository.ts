@@ -1,7 +1,7 @@
-import { and, asc, eq, gt, lt, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, gte, lt, lte, or, sql } from "drizzle-orm";
 import type { Db } from "../../db/client.ts";
-import { advisors, bookings } from "../../db/schema/index.ts";
-import type { BusyRange } from "../../shared/slots.ts";
+import { advisors, availabilityWindows, bookings } from "../../db/schema/index.ts";
+import type { Interval } from "../../shared/slots.ts";
 import {
   BookingStatus,
   type BookingListRow,
@@ -12,6 +12,10 @@ import {
 const holdMinutes = 10;
 const holdIsOpen = sql`${bookings.holdExpiresAt} > clock_timestamp()`;
 const holdHasElapsed = sql`${bookings.holdExpiresAt} <= clock_timestamp()`;
+const stillReserved = or(
+  eq(bookings.status, BookingStatus.confirmed),
+  and(eq(bookings.status, BookingStatus.held), holdIsOpen),
+);
 
 const bookingColumns = {
   id: bookings.id,
@@ -49,27 +53,45 @@ export async function expireOverlappingElapsedHolds(
     );
 }
 
-export async function listActiveBookings(
+export async function listContainingWindows(
   db: Db,
-  advisorId?: string,
-): Promise<BusyRange[]> {
-  const stillReserved = or(
-    eq(bookings.status, BookingStatus.confirmed),
-    and(eq(bookings.status, BookingStatus.held), holdIsOpen),
-  );
-
+  advisorId: string,
+  slot: Interval,
+): Promise<{ id: string; startsAt: Date }[]> {
   return db
     .select({
-      advisorId: bookings.advisorId,
-      startsAt: bookings.startsAt,
-      endsAt: bookings.endsAt,
+      id: availabilityWindows.id,
+      startsAt: availabilityWindows.startsAt,
     })
+    .from(availabilityWindows)
+    .where(
+      and(
+        eq(availabilityWindows.advisorId, advisorId),
+        lte(availabilityWindows.startsAt, slot.startsAt),
+        gte(availabilityWindows.endsAt, slot.endsAt),
+      ),
+    )
+    .orderBy(asc(availabilityWindows.startsAt));
+}
+
+export async function hasActiveOverlap(
+  db: Db,
+  range: Interval & { advisorId: string },
+): Promise<boolean> {
+  const [row] = await db
+    .select({ id: bookings.id })
     .from(bookings)
     .where(
-      advisorId === undefined
-        ? stillReserved
-        : and(stillReserved, eq(bookings.advisorId, advisorId)),
-    );
+      and(
+        stillReserved,
+        eq(bookings.advisorId, range.advisorId),
+        lt(bookings.startsAt, range.endsAt),
+        gt(bookings.endsAt, range.startsAt),
+      ),
+    )
+    .limit(1);
+
+  return row !== undefined;
 }
 
 export async function lockBookingById(

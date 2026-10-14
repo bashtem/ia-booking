@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import {
   defaultPage,
   defaultPageLimit,
+  errorResponseSchema,
   ok,
   paginated,
 } from "../../shared/response.ts";
@@ -28,8 +29,30 @@ export const bookingRoutes: FastifyPluginAsync = async (app) => {
     "/bookings",
     {
       schema: {
+        tags: ["Bookings"],
+        summary: "Hold a slot",
+        operationId: "createBooking",
+        description:
+          "Creates a held booking for 10 minutes. startsAt must fall on the 30-minute grid and fit inside one of that advisor's windows.",
         body: createBookingBodySchema,
-        response: { 200: bookingResponseSchema },
+        response: {
+          200: {
+            ...bookingResponseSchema,
+            description: "Hold created",
+          },
+          400: errorResponseSchema(
+            ["invalid_request"],
+            "Body is invalid, or startsAt is not an ISO-8601 timestamp",
+          ),
+          404: errorResponseSchema(
+            ["advisor_not_found"],
+            "Advisor does not exist",
+          ),
+          409: errorResponseSchema(
+            ["slot_unavailable"],
+            "Slot is outside a window, off the 30-minute grid, or already taken",
+          ),
+        },
       },
     },
     async (request) => {
@@ -58,8 +81,30 @@ export const bookingRoutes: FastifyPluginAsync = async (app) => {
     "/bookings/:id/confirm",
     {
       schema: {
+        tags: ["Bookings"],
+        summary: "Confirm a hold",
+        operationId: "confirmBooking",
+        description:
+          "Confirms an open hold. Confirming an already confirmed booking returns that booking. An elapsed hold is marked expired.",
         params: bookingParamsSchema,
-        response: { 200: bookingResponseSchema },
+        response: {
+          200: {
+            ...bookingResponseSchema,
+            description: "Booking confirmed",
+          },
+          400: errorResponseSchema(
+            ["invalid_request"],
+            "Booking id is not a UUID",
+          ),
+          404: errorResponseSchema(
+            ["booking_not_found"],
+            "Booking does not exist",
+          ),
+          409: errorResponseSchema(
+            ["hold_expired", "not_held"],
+            "Hold has elapsed, or the booking is not held",
+          ),
+        },
       },
     },
     async (request) => ok(await confirmBooking(app.db, request.params.id)),
@@ -72,8 +117,22 @@ export const bookingRoutes: FastifyPluginAsync = async (app) => {
     "/bookings",
     {
       schema: {
+        tags: ["Bookings"],
+        summary: "List bookings",
+        operationId: "listBookings",
+        description:
+          "Paginated list. An elapsed hold can still appear as held until a later booking or confirm marks it expired.",
         querystring: listBookingsQuerySchema,
-        response: { 200: bookingListResponseSchema },
+        response: {
+          200: {
+            ...bookingListResponseSchema,
+            description: "Bookings page",
+          },
+          400: errorResponseSchema(
+            ["invalid_request"],
+            "Query parameters are invalid",
+          ),
+        },
       },
     },
     async (request) => {

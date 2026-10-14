@@ -4,6 +4,7 @@ import sensible from "@fastify/sensible";
 import type { FastifyPluginAsync } from "fastify";
 import fp from "fastify-plugin";
 import { errorHandler } from "./error-handler.ts";
+import { apiDocs } from "./swagger.ts";
 
 function corsOrigin(configured: string): false | string[] {
   const origins = configured
@@ -21,6 +22,7 @@ const appPlugins: FastifyPluginAsync = async (app) => {
   await app.register(cors, {
     origin: corsOrigin(app.config.CORS_ORIGIN),
   });
+  await app.register(apiDocs);
 };
 
 export const registerPlugins = fp(appPlugins, { name: "app-plugins" });

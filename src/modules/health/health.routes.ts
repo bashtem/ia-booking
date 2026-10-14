@@ -5,8 +5,14 @@ export const healthRoutes: FastifyPluginAsync = async (app) => {
     "/health",
     {
       schema: {
+        tags: ["Health"],
+        summary: "Liveness",
+        operationId: "getHealth",
+        description:
+          "Returns ok when the process is up. Does not check the database.",
         response: {
           200: {
+            description: "Process is up",
             type: "object",
             additionalProperties: false,
             required: ["status"],

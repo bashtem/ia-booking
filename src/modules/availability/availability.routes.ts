@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import { ok } from "../../shared/response.ts";
+import { errorResponseSchema, ok } from "../../shared/response.ts";
 import { isVisaType, type VisaType } from "../../shared/visa-types.ts";
 import {
   availabilityQuerySchema,
@@ -28,8 +28,22 @@ export const availabilityRoutes: FastifyPluginAsync = async (app) => {
     "/availability",
     {
       schema: {
+        tags: ["Availability"],
+        summary: "List bookable slots",
+        operationId: "listAvailability",
+        description:
+          "Slots are derived from each advisor window on a 30-minute grid. A slot is omitted when it overlaps a confirmed booking or a hold that has not elapsed.",
         querystring: availabilityQuerySchema,
-        response: { 200: availabilityResponseSchema },
+        response: {
+          200: {
+            ...availabilityResponseSchema,
+            description: "Bookable slots",
+          },
+          400: errorResponseSchema(
+            ["invalid_request"],
+            "Query parameters are invalid",
+          ),
+        },
       },
     },
     async (request) => {

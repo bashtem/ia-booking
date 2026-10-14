@@ -86,6 +86,30 @@ export function successSchema<Data>(data: Data) {
   } as const;
 }
 
+export function errorResponseSchema(
+  codes: readonly string[],
+  description: string,
+) {
+  return {
+    description,
+    type: "object",
+    additionalProperties: false,
+    required: ["success", "error"],
+    properties: {
+      success: { type: "boolean", const: false },
+      error: {
+        type: "object",
+        additionalProperties: false,
+        required: ["code", "message"],
+        properties: {
+          code: { type: "string", enum: codes },
+          message: { type: "string" },
+        },
+      },
+    },
+  } as const;
+}
+
 export function paginatedSchema<Item>(item: Item) {
   return {
     type: "object",

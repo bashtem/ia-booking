@@ -286,7 +286,7 @@ describe("booking flow", () => {
     });
   });
 
-  it("rejects an off-grid start, a short window, a blank name, and an unknown advisor", async () => {
+  it("rejects an off-grid start, a short window, a blank name, an unknown visa, and an unknown advisor", async () => {
     await withApi(async (app) => {
       const offGrid = await book(app, {
         candidateName: "Ada Lovelace",
@@ -314,6 +314,15 @@ describe("booking flow", () => {
       });
       expect(blank.statusCode).toBe(400);
       expect(readError(blank.json()).code).toBe("invalid_request");
+
+      const unknownVisa = await book(app, {
+        candidateName: "Ada Lovelace",
+        visaType: "C",
+        advisorId: "ia-001",
+        startsAt: "2026-11-10T09:00:00.000Z",
+      });
+      expect(unknownVisa.statusCode).toBe(400);
+      expect(readError(unknownVisa.json()).code).toBe("invalid_request");
 
       const missingAdvisor = await book(app, {
         candidateName: "Ada Lovelace",
@@ -570,6 +579,37 @@ describe("booking flow", () => {
       });
       expect(replacement.statusCode).toBe(200);
       expect(readBooking(replacement.json()).status).toBe("held");
+    });
+  });
+
+  it("lets one of two connections book a slot and rejects the other", async () => {
+    await withApi(async (app) => {
+      await withApp(testEnv, async (other) => {
+        const slot = {
+          visaType: "A",
+          advisorId: "ia-001",
+          startsAt: "2026-11-10T09:00:00.000Z",
+        };
+        const [first, second] = await Promise.all([
+          book(app, { ...slot, candidateName: "Ada Lovelace" }),
+          book(other, { ...slot, candidateName: "Grace Hopper" }),
+        ]);
+        const responses = [first, second].sort(
+          (left, right) => left.statusCode - right.statusCode,
+        );
+
+        expect(responses.map((response) => response.statusCode)).toEqual([200, 409]);
+        expect(readError(responses[1]?.json()).code).toBe("slot_unavailable");
+        const winner = readBooking(responses[0]?.json());
+        expect(winner.status).toBe("held");
+
+        const rows = await app.db
+          .select({ id: bookings.id, status: bookings.status })
+          .from(bookings);
+        expect(rows).toHaveLength(1);
+        expect(rows[0]?.id).toBe(winner.id);
+        expect(rows[0]?.status).toBe("held");
+      });
     });
   });
 });
